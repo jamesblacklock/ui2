@@ -146,13 +146,13 @@ export class Rect extends dom.Rect implements Element {
 
   constructor(document: Document) {
     super();
-    this.fill.onChange(() => this._fillChanged());
-    this.x1.onChange(() => this._positionChanged());
-    this.y1.onChange(() => this._positionChanged());
-    this.x2.onChange(() => this._positionChanged());
-    this.y2.onChange(() => this._positionChanged());
-    this.frameSize.width.onChange(() => this._positionChanged());
-    this.frameSize.height.onChange(() => this._positionChanged());
+    this.bindings.fill.onChange(() => this._fillChanged());
+    this.bindings.x1.onChange(() => this._positionChanged());
+    this.bindings.y1.onChange(() => this._positionChanged());
+    this.bindings.x2.onChange(() => this._positionChanged());
+    this.bindings.y2.onChange(() => this._positionChanged());
+    this.bindings.frameSize.width.onChange(() => this._positionChanged());
+    this.bindings.frameSize.height.onChange(() => this._positionChanged());
 
     this.html = document.createElement('div');
     this.html.ontransitionend = e => {
@@ -169,14 +169,14 @@ export class Rect extends dom.Rect implements Element {
     if(this.html === undefined) {
       return;
     }
-    this._updateTransition('background', this.fill.transition);
+    this._updateTransition('background', this.bindings.fill.transition);
     cancelAnimationFrame(this.fillUpdateRequest ?? 0);
 
     this.fillUpdateRequest = requestAnimationFrame(() => {
       if(this.html === undefined) {
         return;
       }
-      const fill = this.fill.get();
+      const fill = this.props.fill;
       if(fill instanceof Color) {
         this.html.style.background = colorToCss(fill);
       }
@@ -186,20 +186,20 @@ export class Rect extends dom.Rect implements Element {
     if(this.html === undefined) {
       return;
     }
-    this._updateTransition('left', this.x1.transition);
-    this._updateTransition('right', this.x2.transition);
-    this._updateTransition('top', this.y1.transition);
-    this._updateTransition('bottom', this.y2.transition);
+    this._updateTransition('left', this.bindings.x1.transition);
+    this._updateTransition('right', this.bindings.x2.transition);
+    this._updateTransition('top', this.bindings.y1.transition);
+    this._updateTransition('bottom', this.bindings.y2.transition);
 
     cancelAnimationFrame(this.positionUpdateRequest ?? 0);
     this.positionUpdateRequest = requestAnimationFrame(() => {
-      const parentW = this.frameSize.width.get();
-      const parentH = this.frameSize.height.get();
+      const parentW = this.props.frameSize.width;
+      const parentH = this.props.frameSize.height;
 
-      const left = this.x1.get().add(parentW.mul(0.5));
-      const top = this.y1.get().add(parentH.mul(0.5));
-      const right = parentW.mul(0.5).sub(this.x2.get());
-      const bottom = parentH.mul(0.5).sub(this.y2.get());
+      const left = this.props.x1.add(parentW.mul(0.5));
+      const top = this.props.y1.add(parentH.mul(0.5));
+      const right = parentW.mul(0.5).sub(this.props.x2);
+      const bottom = parentH.mul(0.5).sub(this.props.y2);
 
       this.html.style.position = 'absolute';
       this.html.style.left = lengthToCss(left);
@@ -237,8 +237,8 @@ export class Body extends dom.ContainerElement implements Element {
   provide() {
     return {
       frameSize: {
-        width: new dom.Binding(new Vw(1)),
-        height: new dom.Binding(new Vh(1)),
+        width: new dom.Binding(Length).set(new Vw(1)),
+        height: new dom.Binding(Length).set(new Vh(1)),
       },
     }
   }

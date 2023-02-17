@@ -2,12 +2,14 @@ import { Length } from './length';
 import { Brush } from './brush';
 import { Children, Component, Element } from './common';
 import { Binding } from './binding';
+import { Model } from './model';
 
 export * from './common';
 export * from './length';
 export * from './brush';
 export * from './transition';
 export * from './binding';
+export * from './model';
 
 export type EventHandler<E extends Element> = (el: E, e: Event) => unknown;
 
@@ -63,18 +65,20 @@ export type FrameSize = {
 }
 
 export class Rect extends ContainerElement {
-  readonly fill = new Binding(Brush);
-  readonly x1 = new Binding(Length);
-  readonly y1 = new Binding(Length);
-  readonly x2 = new Binding(Length);
-  readonly y2 = new Binding(Length);
-  readonly frameSize = {
-    width: new Binding(Length),
-    height: new Binding(Length),
-  };
+  #model = new Model({
+    fill: new Binding(Brush),
+    x1: new Binding(Length),
+    y1: new Binding(Length),
+    x2: new Binding(Length),
+    y2: new Binding(Length),
+    frameSize: {
+      width: new Binding(Length),
+      height: new Binding(Length),
+    }
+  });
   readonly selfSize = {
-    width: new Binding(Length).connect([this.x1, this.x2], ([x1, x2]) => x2.sub(x1)),
-    height: new Binding(Length).connect([this.y1, this.y2], ([y1, y2]) => y2.sub(y1)),
+    width: new Binding(Length).connect([this.bindings.x1, this.bindings.x2], ([x1, x2]) => x2.sub(x1)),
+    height: new Binding(Length).connect([this.bindings.y1, this.bindings.y2], ([y1, y2]) => y2.sub(y1)),
   };
   readonly events = {
     pointer: pointerEvents(this),
@@ -84,10 +88,18 @@ export class Rect extends ContainerElement {
     super();
   }
 
+  get bindings() {
+    return this.#model.bindings;
+  }
+
+  get props() {
+    return this.#model.props;
+  }
+
   inject(deps: { [key: string]: any }) {
     if(deps.frameSize) {
-      this.frameSize.width.connect([deps.frameSize.width]);
-      this.frameSize.height.connect([deps.frameSize.height]);
+      this.bindings.frameSize.width.connect([deps.frameSize.width]);
+      this.bindings.frameSize.height.connect([deps.frameSize.height]);
     }
   }
 

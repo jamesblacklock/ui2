@@ -15,13 +15,8 @@ export class Binding<P extends Property = Property> implements Binding<P> {
   isComputed = false;
   transform: Transformer<P> = p => p[0];
 
-  constructor(init: P | PropertyConstructor<P>, transition?: Transition) {
-    let value;
-    if(init instanceof Function) {
-      value = (init as PropertyConstructor<P>).default();
-    } else {
-      value = init as P;
-    }
+  constructor(init: PropertyConstructor<P>, transition?: Transition) {
+    let value = init.default();
     this.transition = Object.freeze(transition);
     this.descendants = new Set();
     this.value = Object.freeze(value);
@@ -47,6 +42,7 @@ export class Binding<P extends Property = Property> implements Binding<P> {
 
   set(value: P) {
     this._setInternal(value);
+    return this;
   }
 
   _setInternal(value: P, isComputedValue = false) {
