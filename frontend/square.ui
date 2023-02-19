@@ -1,0 +1,19 @@
+pub x: Length;
+pub y: Length;
+pub size: Length;
+
+Rect {
+  fill: #4db;//(.rgb(random(), random(), random()));
+  x1: (x);//(x - size / 2);
+  x2: 100px;//(x + size / 2);
+  y1: 10px;//(y - size / 2);
+  y2: 100px;//(y + size / 2);
+
+  Rect {
+    fill: #da0;
+    x1: -10px;
+    x2: 10px;
+    y1: -10px;
+    y2: 10px;
+  }
+}
