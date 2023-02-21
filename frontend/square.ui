@@ -2,18 +2,39 @@ pub x: Length;
 pub y: Length;
 pub size: Length;
 
+pub thing: Component;
+
+readonly fizzbuzz: Float = 420.69;
+
+inject(FrameSize) parentSize: {
+  width: Length;
+  height: Length;
+};
+
+provide(???)
+
+qwer: Int;
+
 Rect {
   fill: #4db;//(.rgb(random(), random(), random()));
-  x1: (x);//(x - size / 2);
-  x2: 100px;//(x + size / 2);
-  y1: 10px;//(y - size / 2);
-  y2: 100px;//(y + size / 2);
-
+  x1: (x - size / 2);
+  x2: (x + size / 2);
+  y1: rs!(y, size) { //(y - size / 2);
+    println!("binding updated by Rust! Length operators are implemented");
+    y - size / 2
+  }
+  y2: js!(y, size) { //(y + size / 2);
+    console.log('binding updated by JS! Use the JS APIs to manipulate property values');
+    return y.add(size.div(2))
+  }
   Rect {
     fill: #da0;
     x1: -10px;
     x2: 10px;
     y1: -10px;
     y2: 10px;
+
+    "xyz"
+    (thing)
   }
 }

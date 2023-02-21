@@ -1,0 +1,19 @@
+Layout {
+  // header
+  Pane {
+
+  }
+
+  // body
+  Layout {
+    // left pane
+    Rect {
+
+    }
+
+    // right pane
+    Rect {
+      
+    }
+  }
+}

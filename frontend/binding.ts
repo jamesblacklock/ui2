@@ -2,37 +2,32 @@ import { Property } from './common';
 import { Transition } from './transition';
 
 type Transformer<P extends Property> = (p: P[]) => P;
-type PropertyConstructor<P extends Property> = { default: () => P };
+type PropertyConstructor<P extends Property> = { default: () => P, coerce: (e: any) => P };
 
-export class Binding<P extends Property = Property> implements Binding<P> {
+export class Binding<P extends Property = Property> {
   prevValue?: P;
   value: P;
   transitionStartTime = 0;
   transition?: Transition;
-  notify?: () => unknown;
+  notify?: (prev: P, cur: P) => unknown;
   descendants: Set<Binding<P>>;
   ancestors: Binding<P>[] = [];
-  isComputed = false;
   transform: Transformer<P> = p => p[0];
+  isComputed = false;
+  readonly = false;
 
-  constructor(init: PropertyConstructor<P>, transition?: Transition) {
-    let value = init.default();
+  constructor(private init: PropertyConstructor<P>, transition?: Transition) {
     this.transition = Object.freeze(transition);
     this.descendants = new Set();
-    this.value = Object.freeze(value);
+    this.value = init.default();
   }
 
-  onChange(notify: () => unknown) {
+  onChange(notify: (prev: P, cur: P) => unknown) {
     this.notify = notify;
     return this;
   }
 
   get(interpolate = false): P {
-    // if(pull && this.ancestors.length > 0) {
-    //   this.prevValue = this.value;
-    //   this.value = this.transform(this.ancestors.map(b => b.get(false, true)));
-    // }
-
     if(!interpolate || !this.transition || !this.prevValue) {
       return this.value;
     }
@@ -41,26 +36,37 @@ export class Binding<P extends Property = Property> implements Binding<P> {
   }
 
   set(value: P) {
+    if(this.readonly) {
+      throw new Error('cannot rebind: the binding is readonly');
+    }
     this._setInternal(value);
     return this;
   }
 
-  _setInternal(value: P, isComputedValue = false) {
+  freeze() {
+    this.readonly = true;
+    return this;
+  }
+
+  private _setInternal(value: P, isComputedValue = false) {
     if(this.isComputed && !isComputedValue) {
       throw new Error('cannot directly set descendant binding!');
     }
 
     this.prevValue = this.get(true);
-    this.value = value;
+    this.value = this.init.coerce(value);
     this.transitionStartTime = Date.now();
 
-    this.notify?.();
+    this.notify?.(this.prevValue, this.value);
     for(const binding of this.descendants) {
       binding._update();
     }
   }
 
   disconnect() {
+    if(this.readonly) {
+      throw new Error('cannot rebind: the binding is readonly');
+    }
     for(const ancestor of this.ancestors) {
       ancestor.descendants.delete(this);
     }

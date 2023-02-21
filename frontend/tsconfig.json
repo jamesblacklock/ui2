@@ -1,13 +1,12 @@
 {
   "compilerOptions": {
     "outDir": "./dist/",
-    "noImplicitAny": true,
-    "strictNullChecks": true,
     "noImplicitReturns": true,
     "sourceMap": true,
     "module": "es6",
     "target": "esnext",
     "allowJs": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "strict": true,
   }
 }

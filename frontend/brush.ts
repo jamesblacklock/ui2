@@ -1,10 +1,17 @@
 import { Property } from "./common";
 
-export class Brush extends Property {
+export abstract class Brush implements Property {
   static get RED() { return new Color(1.0, 0, 0, 1) };
   static get TRANSPARENT() { return new Color(0, 0, 0, 0) };
 
   static default() { return this.TRANSPARENT as Brush; }
+  static coerce(e: any) {
+    if(e instanceof Brush) {
+      return e;
+    } else {
+      return Brush.default();
+    }
+  }
 
   static rgb(r: number, g: number, b: number) {
     return new Color(r, g, b, 1);
@@ -14,9 +21,8 @@ export class Brush extends Property {
     return new Color(r, g, b, a);
   }
 
-  constructor() {
-    super();
-  }
+  abstract equals(other: Brush): boolean;
+  abstract interpolate(next: this, fac: number): this;
 }
 
 export class Color extends Brush {
@@ -31,6 +37,13 @@ export class Color extends Brush {
     this.g = Math.max(Math.min(g, 1), 0);
     this.b = Math.max(Math.min(b, 1), 0);
     this.a = Math.max(Math.min(a, 1), 0);
+  }
+  equals(other: Property) {
+    return other instanceof Color &&
+      this.r === other.r &&
+      this.g === other.g &&
+      this.b === other.b &&
+      this.a === other.a;
   }
 
   interpolate(next: Color, fac: number) {

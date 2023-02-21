@@ -1,56 +1,17 @@
-export class Property {
-  equals(_other: Property) {
-    return false;
-  }
-  interpolate(next: typeof this, fac: number) {
-    return fac < 0.5 ? this : next;
-  }
+export interface Property {
+  equals(other: this): boolean;
+  interpolate(next: this, fac: number): this;
 }
 
-
-export interface Component<E extends Element> {
-  getRoot(): E;
-}
-
-export abstract class Element implements Component<Element> {
-  getRoot() { return this; }
-
-  provide(): { [key: string]: any } {
-    return {};
-  }
-
+export abstract class Component<E = unknown> implements Property {
+  static default() { return new Empty() };
+  static coerce(e: any) { return e instanceof Component ? e : new Empty() };
+  equals(other: this) { return this === other }
+  interpolate(next: this, _fac: number) { return next }
   inject(_deps: { [key: string]: any }) {}
+  abstract getRoot(): E;
 }
 
-
-export class Children<E extends Element = Element> {
-  arr: Component<E>[] = [];
-  adapter?: ChildrenAdapter<E>;
-  element: Element;
-
-  constructor(element: Element) {
-    this.element = element;
-  }
-
-  append(component: Component<E>) {
-    component.getRoot().inject(this.element.provide());
-    this.arr.push(component);
-    this.adapter?.append(component.getRoot());
-  }
-
-  get(index: number) {
-    return this.arr[index];
-  }
-
-  get length() {
-    return this.arr.length;
-  }
-
-  [Symbol.iterator]() {
-    return this.arr[Symbol.iterator]();
-  }
-}
-
-export interface ChildrenAdapter<E> {
-  append(element: E): void;
+export class Empty extends Component {
+  getRoot() { return this; }
 }

@@ -3,11 +3,11 @@ import { Property } from "./common";
 
 
 export type BindingSet = {
-  [key: string]: Binding | BindingSet;
+  [key: string]: Binding<any> | BindingSet;
 };
 
 export type PropertySet<B> = {
-  [P in keyof B]: B[P] extends Binding ? B[P]["value"] : PropertySet<B[P]>;
+  [P in keyof B]: B[P] extends Binding<infer Q> ? Q : PropertySet<B[P]>;
 };
 
 export class Model<B extends BindingSet> {
