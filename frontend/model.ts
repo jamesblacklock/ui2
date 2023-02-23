@@ -1,7 +1,6 @@
 import { Binding } from "./binding";
 import { Property } from "./common";
 
-
 export type BindingSet = {
   [key: string]: Binding<any> | BindingSet;
 };

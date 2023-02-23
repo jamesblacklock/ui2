@@ -1,8 +1,8 @@
 import { Property } from './common';
 import { Transition } from './transition';
 
-type Transformer<P extends Property> = (p: P[]) => P;
-type PropertyConstructor<P extends Property> = { default: () => P, coerce: (e: any) => P };
+export type Transformer<P extends Property, A extends any[] = Property[]> = (p: A) => P;
+export type PropertyConstructor<P extends Property> = { default: () => P, coerce: (e: any) => P };
 
 export class Binding<P extends Property = Property> {
   prevValue?: P;
@@ -12,7 +12,7 @@ export class Binding<P extends Property = Property> {
   notify?: (prev: P, cur: P) => unknown;
   descendants: Set<Binding<P>>;
   ancestors: Binding<P>[] = [];
-  transform: Transformer<P> = p => p[0];
+  transform: Transformer<P> = p => p[0] as P;
   isComputed = false;
   readonly = false;
 
@@ -74,11 +74,14 @@ export class Binding<P extends Property = Property> {
     this.isComputed = false;
   }
 
-  connect(ancestors: Binding<P>[], transform: Transformer<P> = p => p[0], transition?: Transition) {
+  connect<
+    A extends any[],
+    AP extends any[] = { [P in keyof A]: A[P]['value'] }
+  >(ancestors: A, transform: Transformer<P, AP> = p => p[0] as P, transition?: Transition) {
     this.disconnect();
 
     this.ancestors = ancestors;
-    this.transform = transform;
+    this.transform = transform as Transformer<P>;
     this.transition = transition;
     this.isComputed = true;
 

@@ -4,6 +4,8 @@ export default class Layouts
 {
   #publicModel = new Dom.Model({
     padding: new Dom.Binding(Dom.Length),
+    layout: new Dom.Binding(Dom.Enum.Layout),
+    item: new Dom.Binding(Dom.Component),
   });
   #privateModel = new Dom.Model({});
   readonly root: Dom.Rect;
@@ -19,67 +21,41 @@ export default class Layouts
       e.props.x2 = Dom.Length.px(200);
       e.props.y1 = Dom.Length.px(-200);
       e.props.y2 = Dom.Length.px(200);
+      const layouts = [Dom.Enum.Layout.Column, Dom.Enum.Layout.Row];
+      let qq = 0;
+      e.events.pointer.click.addListener(() => this.props.layout = layouts[qq++ % 2]);
       var c = dom.Layout();
       ((e) => {
         e.bindings.padding.connect([this.bindings.padding]);
-        e.props.layout = Dom.Enum.Layout.Row;
-        var c = dom.Pane();
-        ((e) => {
+        e.bindings.layout.connect([this.bindings.layout]);
+        var q = ((e: Dom.Pane) => {
           var c = dom.Rect();
           ((e) => {
             e.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
+            e.fillParent.set(Dom.Boolean.true);
+            ((window as any).rects = (window as any).rects ?? []).push(e);
           })(c);
           e.children.append(c);
-        })(c);
+        });
+        var c = dom.Pane();
+        q(c);
         e.children.append(c);
         var c = dom.Pane();
-        ((e) => {
-          var c = dom.Rect();
-          ((e) => {
-            e.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
-          })(c);
-          e.children.append(c);
-        })(c);
+        q(c);
         e.children.append(c);
         var c = dom.Pane();
-        ((e) => {
-          var c = dom.Rect();
-          ((e) => {
-            e.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
-          })(c);
-          e.children.append(c);
-        })(c);
+        q(c);
         e.children.append(c);
         var c = dom.Pane();
-        ((e) => {
-          var c = dom.Rect();
-          ((e) => {
-            e.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
-          })(c);
-          e.children.append(c);
-        })(c);
+        q(c);
         e.children.append(c);
         var c = dom.Pane();
-        ((e) => {
-          var c = dom.Rect();
-          ((e) => {
-            e.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
-          })(c);
-          e.children.append(c);
-        })(c);
+        q(c);
         e.children.append(c);
         var c = dom.Pane();
-        ((e) => {
-          var c = dom.Rect();
-          ((e) => {
-            e.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
-          })(c);
-          e.children.append(c);
-        })(c);
+        q(c);
+        e.children.append(c);
       })(c);
-      const layouts = [Dom.Enum.Layout.Column, Dom.Enum.Layout.Row];
-      let qq = 0;
-      e.events.pointer.click.addListener(() => c.props.layout = layouts[qq++ % 2]);
       e.children.append(c);
     })(this.root);
   }

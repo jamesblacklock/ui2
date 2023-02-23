@@ -4,6 +4,7 @@ import { Component, Property, Empty } from './common';
 import { Binding } from './binding';
 import { Model } from './model';
 import { String, Boolean, Int } from './types';
+import { BindingPreset } from './binding-preset';
 
 export * from './types';
 export * from './common';
@@ -156,6 +157,29 @@ export class Rect extends Container<Rect> {
       height: new Binding(Length),
     }
   });
+
+  fillParent = new BindingPreset(Boolean)
+    .addChild(
+      this.bindings.x1,
+      [this.privateModel.bindings.parentSize.width],
+      (value, [width]) => value.value ? width.neg().div(2) : Length.px(0),
+    )
+    .addChild(
+      this.bindings.x2,
+      [this.privateModel.bindings.parentSize.width],
+      (value, [width]) => value.value ? width.div(2) : Length.px(0),
+    )
+    .addChild(
+      this.bindings.y1,
+      [this.privateModel.bindings.parentSize.height],
+      (value, [height]) => value.value ? height.neg().div(2) : Length.px(0),
+    )
+    .addChild(
+      this.bindings.y2,
+      [this.privateModel.bindings.parentSize.height],
+      (value, [height]) => value.value ? height.div(2) : Length.px(0),
+    );;
+
   readonly events = {
     pointer: pointerEvents(this as Rect),
   };
@@ -258,11 +282,54 @@ export const Enum = {
 
 export class Pane extends Container<Pane> {
   #t: 'Pane' = 'Pane';
+  #privateModel = new Model({
+    siblingCount: new Binding(Int),
+    padding: new Binding(Length),
+    selfSize: {
+      width: new Binding(Length),
+      height: new Binding(Length),
+    },
+  });
   constructor() {
     super(null);
   }
   getRoot() {
     return this;
+  }
+  inject(deps: { [key: string]: any; }): void {
+    if(deps.layoutInfo) {
+      this.#privateModel.bindings.siblingCount.connect([deps.layoutInfo.itemCount]);
+      this.#privateModel.bindings.padding.connect([deps.layoutInfo.padding]);
+    }
+    if(deps.frameSize) {
+      this.#privateModel.bindings.selfSize.width.connect(
+        [
+          deps.frameSize.width,
+          this.#privateModel.bindings.padding,
+          this.#privateModel.bindings.siblingCount,
+        ],
+        ([width, padding, siblingCount]) => {
+          return width.sub(padding.mul(2)).div((siblingCount as any).value);
+        },
+      );
+      this.#privateModel.bindings.selfSize.height.connect(
+        [
+          deps.frameSize.height,
+          this.#privateModel.bindings.padding,
+          this.#privateModel.bindings.siblingCount,
+        ],
+        ([height, padding, siblingCount]) => height.sub(padding.mul(2)),
+      );
+    }
+  }
+  provide() {
+    return {
+      ...super.provide(),
+      frameSize: this.#privateModel.bindings.selfSize,
+      layoutInfo: {
+        itemCount: this.children.childCount,
+      },
+    };
   }
 }
 
