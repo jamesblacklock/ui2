@@ -63,9 +63,7 @@ export default class Square
   get bindings() {
     return this.#publicModel.bindings;
   }
-  getRoot() {
-    return this.root;
-  }
+  getRoots() { return [this.root]; }
   provide() { return {}; }
   inject(deps: { [key: string]: any }) {
     if(deps.frameSize) {

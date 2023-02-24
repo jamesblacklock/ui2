@@ -1,9 +1,9 @@
 import { Length } from './length';
 import { Brush } from './brush';
-import { Component, Property, Empty } from './common';
-import { Binding } from './binding';
+import { Component, Property, Empty, Collection } from './common';
+import { Binding, PropertyConstructor } from './binding';
 import { Model } from './model';
-import { String, Boolean, Int } from './types';
+import { String, Int, Float } from './types';
 import { BindingPreset } from './binding-preset';
 
 export * from './types';
@@ -65,18 +65,18 @@ export abstract class Container<E = unknown, Child = unknown> extends Component<
 }
 
 export class EmptyContainer extends Container {
-  getRoot() {
-    return this;
+  getRoots() {
+    return [];
   }
 }
 
 export interface ChildrenAdapter {
-  append(element: any): void;
+  append(elements: any): void;
   replace(cur: any, next: any): void;
 }
 
 export class Children<T = unknown> {
-  arr: [any, T][] = [];
+  arr: [any, T[]][] = [];
   adapter?: ChildrenAdapter;
   parent: Container<unknown>;
   childCount = new Binding(Int);
@@ -88,8 +88,12 @@ export class Children<T = unknown> {
   append(child: Component<T>) {
     this.childCount.set(Int.from(this.childCount.get().value + 1))
     child.inject(this.parent.provide());
-    this.arr.push([child, child.getRoot()]);
-    this.adapter?.append(child.getRoot());
+    const roots = child.getRoots();
+    if(roots.length === 0) {
+      roots.push({} as T);
+    }
+    this.arr.push([child, roots]);
+    this.adapter?.append(roots);
   }
 
   update(child: Component<T>) {
@@ -98,9 +102,13 @@ export class Children<T = unknown> {
       console.warn("tried to replace component not found in container");
       return;
     }
-    const prevRoot = result[1];
-    result[1] = child.getRoot();
-    this.adapter?.replace(prevRoot, child.getRoot());
+    const prevRoots = result[1];
+    const nextRoots = child.getRoots();
+    if(nextRoots.length === 0) {
+      nextRoots.push({} as T);
+    }
+    result[1] = nextRoots;
+    this.adapter?.replace(prevRoots, nextRoots);
   }
 
   get(index: number) {
@@ -132,7 +140,7 @@ export class Text extends Component<Text> {
     return this.#model.props;
   }
 
-  getRoot() { return this; }
+  getRoots() { return [this]; }
 }
 
 export type FrameSize = {
@@ -158,26 +166,26 @@ export class Rect extends Container<Rect> {
     }
   });
 
-  fillParent = new BindingPreset(Boolean)
+  scaleToParent = new BindingPreset(Float)
     .addChild(
       this.bindings.x1,
       [this.privateModel.bindings.parentSize.width],
-      (value, [width]) => value.value ? width.neg().div(2) : Length.px(0),
+      (value, [width]) => width.mul(value.value/2).neg(),
     )
     .addChild(
       this.bindings.x2,
       [this.privateModel.bindings.parentSize.width],
-      (value, [width]) => value.value ? width.div(2) : Length.px(0),
+      (value, [width]) => width.mul(value.value/2),
     )
     .addChild(
       this.bindings.y1,
       [this.privateModel.bindings.parentSize.height],
-      (value, [height]) => value.value ? height.neg().div(2) : Length.px(0),
+      (value, [height]) => height.mul(value.value/2).neg(),
     )
     .addChild(
       this.bindings.y2,
       [this.privateModel.bindings.parentSize.height],
-      (value, [height]) => value.value ? height.div(2) : Length.px(0),
+      (value, [height]) => height.mul(value.value/2),
     );;
 
   readonly events = {
@@ -211,9 +219,8 @@ export class Rect extends Container<Rect> {
       this.privateModel.bindings.parentSize.height.connect([deps.frameSize.height]);
     }
   }
-  getRoot() {
-    return this;
-  }
+
+  getRoots() { return [this]; }
 }
 
 export class Slot<T = unknown> extends Component<T> {
@@ -246,8 +253,8 @@ export class Slot<T = unknown> extends Component<T> {
     return this.#model.props;
   }
 
-  getRoot(): T {
-    return this.props.component.getRoot();
+  getRoots(): T[] {
+    return this.props.component.getRoots();
   }
 
   private updateComponent(prev: Component, cur: Component) {
@@ -293,9 +300,9 @@ export class Pane extends Container<Pane> {
   constructor() {
     super(null);
   }
-  getRoot() {
-    return this;
-  }
+
+  getRoots() { return [this]; }
+
   inject(deps: { [key: string]: any; }): void {
     if(deps.layoutInfo) {
       this.#privateModel.bindings.siblingCount.connect([deps.layoutInfo.itemCount]);
@@ -309,7 +316,7 @@ export class Pane extends Container<Pane> {
           this.#privateModel.bindings.siblingCount,
         ],
         ([width, padding, siblingCount]) => {
-          return width.sub(padding.mul(2)).div((siblingCount as any).value);
+          return width.sub(padding.mul(2)).div(siblingCount.value);
         },
       );
       this.#privateModel.bindings.selfSize.height.connect(
@@ -375,8 +382,52 @@ export class Layout extends Container<Layout, Pane> {
     };
   }
 
-  getRoot() {
-    return this;
+  getRoots() { return [this]; }
+}
+
+export class Repeater<P extends Property = Property, E = unknown> extends Component<E> {
+  #t : 'Repeater' = 'Repeater';
+  #model;
+  components: Component<E>[] = [];
+  parent = new Binding(Container);
+  // parentHasBeenSet = false;
+
+  constructor(init: PropertyConstructor<Collection<P>>, private proc: (p: P) => Component<E>[]) {
+    super();
+    this.#model = new Model({
+      collection: new Binding(init),
+    });
+
+    this.bindings.collection.onChange(() => this._updateItems());
+  }
+
+  get bindings() {
+    return this.#model.bindings;
+  }
+
+  get props() {
+    return this.#model.props;
+  }
+
+  inject(deps: { [key: string]: any; }): void {
+    this.parent.set(deps.parent.get());
+    // this.parentHasBeenSet = true;
+    for(const item of this.components) {
+      item.inject(deps);
+    }
+  }
+
+  getRoots() {
+    return this.components.map(e => e.getRoots()).flat();
+  }
+
+  _updateItems() {
+    const all = [];
+    for(const p of this.props.collection.iter()) {
+      all.push(this.proc.call(null, p));
+    }
+    this.components = all.flat();
+    this.parent.get().children.update(this);
   }
 }
 
@@ -387,4 +438,8 @@ export interface Dom {
   Layout(): Layout;
   Pane(): Pane;
   Empty(): Empty;
+  Repeater<P extends Property, E = unknown>(
+    init: PropertyConstructor<Collection<P>>,
+    proc: (p: P) => Component<E>[],
+  ): Repeater<P, E>;
 }

@@ -118,13 +118,22 @@ class ChildrenAdapter implements dom.ChildrenAdapter {
       element.html = node;
     }
   }
-  append(element: HtmlComponent) {
-    this.ensureHtml(element);
-    this.html.appendChild(element.html);
+  append(elements: HtmlComponent[]) {
+    for(const element of elements) {
+      this.ensureHtml(element);
+      this.html.appendChild(element.html);
+    }
   }
-  replace(cur: HtmlComponent, next: HtmlComponent) {
-    this.ensureHtml(next);
-    this.html.replaceChild(next.html, cur.html);
+  replace(cur: HtmlComponent[], next: HtmlComponent[]) {
+    for(const element of next) {
+      this.ensureHtml(element);
+    }
+    for(const element of next) {
+      this.html.insertBefore(element.html, cur[0].html);
+    }
+    for(const element of cur) {
+      this.html.removeChild(element.html);
+    }
   }
 }
 
@@ -305,9 +314,7 @@ export class Body extends dom.Container<Body> implements HtmlComponent {
     }
   }
 
-  getRoot() {
-    return this;
-  }
+  getRoots() { return [this]; }
 }
 
 export class Dom implements dom.Dom {
@@ -335,5 +342,11 @@ export class Dom implements dom.Dom {
   }
   Empty() {
     return new dom.Empty();
+  }
+  Repeater<P extends dom.Property, E = unknown>(
+    init: dom.PropertyConstructor<dom.Collection<P>>,
+    proc: (p: P) => dom.Component<E>[]
+  ) {
+    return new dom.Repeater(init, proc);
   }
 }

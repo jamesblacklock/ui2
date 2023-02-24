@@ -28,33 +28,17 @@ export default class Layouts
       ((e) => {
         e.bindings.padding.connect([this.bindings.padding]);
         e.bindings.layout.connect([this.bindings.layout]);
-        var q = ((e: Dom.Pane) => {
+
+        const repeater = dom.Repeater<Dom.Int, Dom.Pane>(Dom.Int, p => {
+          var q = dom.Pane();
           var c = dom.Rect();
-          ((e) => {
-            e.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
-            e.fillParent.set(Dom.Boolean.true);
-            ((window as any).rects = (window as any).rects ?? []).push(e);
-          })(c);
-          e.children.append(c);
+          c.props.fill = Dom.Brush.rgb(Math.random(), Math.random(), Math.random());
+          c.scaleToParent.set(Dom.Float.from(1));
+          q.children.append(c);
+          return [q];
         });
-        var c = dom.Pane();
-        q(c);
-        e.children.append(c);
-        var c = dom.Pane();
-        q(c);
-        e.children.append(c);
-        var c = dom.Pane();
-        q(c);
-        e.children.append(c);
-        var c = dom.Pane();
-        q(c);
-        e.children.append(c);
-        var c = dom.Pane();
-        q(c);
-        e.children.append(c);
-        var c = dom.Pane();
-        q(c);
-        e.children.append(c);
+        e.children.append(repeater);
+        (window as any).repeater = repeater;
       })(c);
       e.children.append(c);
     })(this.root);
@@ -65,9 +49,7 @@ export default class Layouts
   get bindings() {
     return this.#publicModel.bindings;
   }
-  getRoot() {
-    return this.root;
-  }
+  getRoots() { return [this.root]; }
   provide() { return {}; }
   inject(deps: { [key: string]: any }) {
     this.root.inject(deps);

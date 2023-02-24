@@ -1,4 +1,4 @@
-import { Property } from "./common";
+import { Collection, Property } from "./common";
 
 abstract class ScalarValueProperty<T> implements Property {
   constructor(readonly value: T) {}
@@ -9,7 +9,7 @@ abstract class ScalarValueProperty<T> implements Property {
   valueOf() { return this.value; }
 }
 
-export class Int extends ScalarValueProperty<number> {
+export class Int extends ScalarValueProperty<number> implements Collection<Int> {
   static from(value: number) { return new Int(value); };
   static default() { return new this(0); }
   static coerce(e: any) {
@@ -23,6 +23,11 @@ export class Int extends ScalarValueProperty<number> {
   constructor(value: number) { super(value << 0); }
   interpolate(next: Int, fac: number) {
     return Int.from((next.value - this.value) * fac + this.value) as this;
+  }
+  *iter() {
+    for(let i = 1; i <= this.value; i++) {
+      yield Int.from(i);
+    }
   }
 }
 

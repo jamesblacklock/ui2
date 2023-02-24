@@ -3,15 +3,19 @@ export interface Property {
   interpolate(next: this, fac: number): this;
 }
 
+export interface Collection<P extends Property> extends Property {
+  iter(): Generator<P>;
+}
+
 export abstract class Component<E = unknown> implements Property {
   static default() { return new Empty() };
   static coerce(e: any) { return e instanceof Component ? e : new Empty() };
   equals(other: this) { return this === other }
   interpolate(next: this, _fac: number) { return next }
   inject(_deps: { [key: string]: any }) {}
-  abstract getRoot(): E;
+  abstract getRoots(): E[];
 }
 
 export class Empty extends Component {
-  getRoot() { return this; }
+  getRoots() { return []; }
 }

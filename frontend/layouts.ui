@@ -1,19 +1,14 @@
-Layout {
-  // header
-  Pane {
+pub layout: Enum.Layout;
 
-  }
-
-  // body
+Rect {
   Layout {
-    // left pane
-    Rect {
-
-    }
-
-    // right pane
-    Rect {
-      
+    layout: (layout);
+    Pane for n in 6 {
+      Rect {
+        scaleToParent: 1;
+        fill: (Brush.rgb(Math.random(), Math.random(), Math.random()));
+        (n)
+      }
     }
   }
 }
