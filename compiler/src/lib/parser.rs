@@ -2,14 +2,15 @@ use std::collections::HashMap;
 use std::cell::Cell;
 use std::path::PathBuf;
 use convert_case::{Casing, Case};
+use maplit::hashmap;
 
 use crate::issue::{Issue};
 use crate::source_file::{Span, SourceFile};
-use crate::{tokens::*, ValueExpr, Expr, Ctx};
+use crate::{tokens::*, Expr, Ctx};
 
 use super::{
-	Value,
 	Import,
+	ExprValue,
 	Type,
 	PropDecl,
 };
@@ -17,26 +18,47 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct Repeater {
 	pub index: Option<String>,
-	pub item: String,
-	pub collection: Value,
+	pub item: Option<(String, Span)>,
+	pub collection: Expr,
 	pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct Condition {
-	pub expr: Value,
+	pub expr: Expr,
+	pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct PropAsgn {
+	pub expr: Expr,
 	pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct Element {
 	pub path: Vec<String>,
-	pub data: Option<Value>,
+	pub data: Option<Expr>,
 	pub condition: Option<Condition>,
 	pub repeater: Option<Repeater>,
-	pub props: HashMap<String, ValueExpr>,
+	pub props: HashMap<String, PropAsgn>,
 	pub children: Vec<Content>,
 	pub name_span: Span,
+}
+
+impl Element {
+	fn text(value: Expr) -> Self {
+		let name_span = value.span.clone();
+		Element {
+			path: vec!["Text".to_owned()],
+			data: None,
+			condition: None,
+			repeater: None,
+			props: hashmap!["content".to_owned() => PropAsgn { expr: value, span: name_span.clone() } ],
+			children: vec![],
+			name_span,
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,14 +81,8 @@ pub struct Component {
 #[derive(Debug)]
 struct Property {
 	path: Vec<String>,
-	value: Value,
+	value: Expr,
 	span: Span,
-}
-
-impl Property {
-	fn to_value_expr(&self) -> ValueExpr {
-		ValueExpr { value: self.value.clone(), span: self.span.clone() }
-	}
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +110,7 @@ fn hex_to_int(hex: u8) -> u8 {
 	}
 }
 
-fn color_from_hex(hex: &str) -> Value {
+fn color_from_hex(hex: &str) -> ExprValue {
 	let hex = hex.as_bytes();
 	assert!(hex.len() == 3 || hex.len() == 6);
 	match hex.len() {
@@ -105,7 +121,7 @@ fn color_from_hex(hex: &str) -> Value {
 			r = (r << 4) + r;
 			g = (g << 4) + g;
 			b = (b << 4) + b;
-			Value::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0)
+			ExprValue::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0)
 		},
 		4 => {
 			let mut r = hex_to_int(hex[0]);
@@ -116,20 +132,20 @@ fn color_from_hex(hex: &str) -> Value {
 			g = (g << 4) + g;
 			b = (b << 4) + b;
 			a = (a << 4) + a;
-			Value::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, a as f64 / 255.0)
+			ExprValue::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, a as f64 / 255.0)
 		},
 		6 => {
 			let r = (hex_to_int(hex[0]) << 4) + hex_to_int(hex[1]);
 			let g = (hex_to_int(hex[2]) << 4) + hex_to_int(hex[3]);
 			let b = (hex_to_int(hex[4]) << 4) + hex_to_int(hex[5]);
-			Value::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0)
+			ExprValue::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0)
 		},
 		8 => {
 			let r = (hex_to_int(hex[0]) << 4) + hex_to_int(hex[1]);
 			let g = (hex_to_int(hex[2]) << 4) + hex_to_int(hex[3]);
 			let b = (hex_to_int(hex[4]) << 4) + hex_to_int(hex[5]);
 			let a = (hex_to_int(hex[6]) << 4) + hex_to_int(hex[7]);
-			Value::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, a as f64 / 255.0)
+			ExprValue::Color(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, a as f64 / 255.0)
 		},
 		_ => unreachable!(),
 	}
@@ -195,6 +211,14 @@ impl Parser {
 		}
 	}
 
+	fn offset(&self) -> usize {
+		return self.offset;
+	}
+
+	fn set_offset(&mut self, offset: usize) {
+		self.offset = offset;
+	}
+
 	fn permit(&mut self, tok: TT) -> Option<Token> {
 		if self.cur().tok == tok {
 			self.offset += 1;
@@ -204,14 +228,16 @@ impl Parser {
 		}
 	}
 
-	fn expect<S: Into<String>>(&mut self, descr: S, expected: TT) -> Result<Token, ()> {
-		self.permit(expected).ok_or_else(|| self.expected_error(descr, &self.cur().clone()))
+	fn expect(&mut self, expected: TT) -> Result<Token, ()> {
+		let desc = expected.desc();
+		self.permit(expected).ok_or_else(|| self.expected_error(desc, &self.cur().clone()))
 	}
 
 	def_token_matchers! { permit_string, expect_string, "string", String, String }
 	def_token_matchers! { permit_name, expect_name, "name", Name, String }
-	def_token_matchers! { permit_number, expect_number, "number", Number, (String, String) }
+	def_token_matchers! { permit_number, expect_number, "number", Number, (String, bool, String) }
 	def_token_matchers! { permit_hex_color, expect_hex_color, "hex_color", HexColor, String }
+	def_token_matchers! { permit_enum, expect_enum, "enum", Enum, String }
 
 	fn parse_type(&mut self) -> Result<(Type, Span), ()> {
 		if let Some((name, span)) = self.permit_name() {
@@ -244,7 +270,7 @@ impl Parser {
 			} else {
 				None
 			};
-			let end_span = self.expect("`;`", TT::Semicolon)?.span;
+			let end_span = self.expect(TT::Semicolon)?.span;
 
 			imports.push(Import { path, alias, span: span.merge(&end_span) });
 		}
@@ -257,22 +283,14 @@ impl Parser {
 		loop {
 			let (is_pub, name, start_span) = if let Some(pub_token) = self.permit(TT::Pub) {
 				(true, self.expect_name()?.0, pub_token.span)
-			} else if let Some((name, span)) = self.permit_name() {
+			} else if self.cur().is_name() && self.cur_offset(1).is(TT::Colon) {
+				let (name, span) = self.expect_name()?;
 				(false, name, span)
 			} else {
 				break;
 			};
 
-			let colon = self.permit(TT::Colon);
-
-			if colon.is_none() {
-				if is_pub {
-					self.expected_error("`;`", &self.cur().clone());
-				} else {
-					self.offset -= 1;
-				}
-				break;
-			}
+			self.expect(TT::Colon)?;
 
 			let (prop_type, type_span) = self.parse_type()?;
 			props.push(PropDecl {
@@ -284,7 +302,7 @@ impl Parser {
 			});
 
 
-			self.expect("`;`", TT::Semicolon)?;
+			self.expect(TT::Semicolon)?;
 		}
 
 		let map = props.into_iter().fold(HashMap::new(), |mut map, e| {
@@ -302,58 +320,101 @@ impl Parser {
 	fn parse_path(&mut self) -> Result<(Vec<String>, Span), ()> {
 		let (name, mut full_span) = self.expect_name()?;
 		let mut path = vec![name];
-		while let Some(_) = self.permit(TT::Period) {
-			let (name, span) = self.expect_name()?;
-			full_span = full_span.merge(&span);
-			path.push(name);
+		loop {
+			if let Some(_) = self.permit(TT::Period) {
+				let (name, span) = self.expect_name()?;
+				full_span = full_span.merge(&span);
+				path.push(name);
+			} else if let Some((name, span)) = self.permit_enum() {
+				full_span = full_span.merge(&span);
+				path.push(name);
+			} else {
+				break;
+			}
 		}
 
 		Ok((path, full_span))
 	}
 
-	fn parse_expr(&mut self) -> Result<(Value, Span), ()> {
-		let mut full_span = self.cur().span.clone();
+	fn parse_function_call(&mut self, expr: Expr) -> Result<Expr, ()> {
+		self.expect(TT::LParen)?;
+
+		let mut args = Vec::new();
+		while !(self.cur().is(TT::RParen) || self.cur().is(TT::Eof)) {
+			args.push(self.parse_expr()?);
+			if !(self.cur().is(TT::Comma) || self.cur().is(TT::RParen)) {
+				self.error(format!("expected `,` or `)`, found {}", self.cur()), &self.cur().span.clone());
+				return Err(());
+			}
+			self.permit(TT::Comma);
+		}
+
+		let rparen = self.expect(TT::RParen)?;
+		let span = expr.span.merge(&rparen.span);
+		Ok(Expr {
+			value: ExprValue::FunctionCall(Box::new(expr), args),
+			span,
+		})
+	}
+
+	fn parse_expr(&mut self) -> Result<Expr, ()> {
 		let paren = self.permit(TT::LParen).is_some();
 
-		let (expr, span) = if self.cur().is_name() {
+		let mut expr = if self.cur().is_name() {
 			let (path, span) = self.parse_path()?;
-			(Value::Expr(Expr::Path(path, Ctx::Component)), span)
+			Expr { value: ExprValue::Path(path, Ctx::Component), span }
 		} else {
 			self.parse_value()?
 		};
 
-		full_span = full_span.merge(&span);
-
-		if paren {
-			let tok = self.expect("`)`", TT::RParen)?;
-			full_span = full_span.merge(&tok.span);
+		loop {
+			if self.cur().is(TT::LParen) {
+				expr = self.parse_function_call(expr)?;
+			} else {
+				break;
+			}
 		}
 
-		Ok((expr, full_span))
+		if paren {
+			self.expect(TT::RParen)?;
+		}
+
+		Ok(expr)
 	}
 
-	fn parse_value(&mut self) -> Result<(Value, Span), ()> {
-		let (num_tok, negative) = if self.permit(TT::Minus).is_some() {
-			(Some(self.expect_number()?), true)
-		} else if self.permit(TT::Plus).is_some() {
-			(Some(self.expect_number()?), false)
+	fn parse_value(&mut self) -> Result<Expr, ()> {
+		let num_tok = if let Some(tok) = self.permit(TT::Minus) {
+			let (num, span) = self.expect_number()?;
+			Some((num, true, tok.span.merge(&span)))
+		} else if let Some(tok) = self.permit(TT::Plus) {
+			let (num, span) = self.expect_number()?;
+			Some((num, false, tok.span.merge(&span)))
 		} else {
-			(self.permit_number(), false)
+			self.permit_number().map(|(num, span)| (num, false, span))
 		};
-		if let Some(((num, suffix), span)) = num_tok {
+		if let Some(((num, float, suffix), negative, span)) = num_tok {
 			let n = num.parse::<f64>().unwrap() * if negative { -1.0 } else { 1.0 };
 			match suffix.as_str() {
-				"px" => Ok((Value::Px(n), span)),
-				_ => unimplemented!(),
+				"px" => Ok(Expr { value: ExprValue::Px(n), span }),
+				"" => {
+					let value = if float { ExprValue::Float(n) } else { ExprValue::Int(n as i64) };
+					Ok(Expr { value, span })
+				},
+				_ => {
+					self.error(format!("unrecognized numerical suffix: `{}`", suffix), &span);
+					Err(())
+				},
 			}
 		} else if let Some((hex_tok, span)) = self.permit_hex_color() {
-			Ok((color_from_hex(&hex_tok), span))
+			Ok(Expr { value: color_from_hex(&hex_tok), span })
 		} else if let Some(Token { span, .. }) = self.permit(TT::True) {
-			Ok((Value::Boolean(true), span))
+			Ok(Expr { value: ExprValue::Boolean(true), span })
 		} else if let Some(Token { span, .. }) = self.permit(TT::False) {
-			Ok((Value::Boolean(false), span))
+			Ok(Expr { value: ExprValue::Boolean(false), span })
 		} else if let Some((s, span)) = self.permit_string() {
-			Ok((Value::String(s), span))
+			Ok(Expr { value: ExprValue::String(s), span })
+		} else if let Some((s, span)) = self.permit_enum() {
+			Ok(Expr { value: ExprValue::Enum(s, None), span })
 		} else if self.cur().tok == TT::LParen {
 			self.parse_expr()
 		} else {
@@ -362,11 +423,10 @@ impl Parser {
 		}
 	}
 
-	fn parse_prop_assignments(&mut self) -> Result<HashMap<String, ValueExpr>, ()> {
+	fn parse_prop_assignments(&mut self) -> Result<HashMap<String, PropAsgn>, ()> {
 		let mut props = Vec::new();
-		let mut offset;
 		loop {
-			offset = self.offset;
+			let offset = self.offset();
 
 			if !self.cur().is_name() {
 				break;
@@ -374,16 +434,16 @@ impl Parser {
 
 			let (path, mut full_span) = self.parse_path()?;
 
-			let (value, value_span) = if let Some(_) = self.permit(TT::Colon) {
+			let value = if let Some(_) = self.permit(TT::Colon) {
 				self.parse_value()?
 			} else {
-				self.offset = offset;
+				self.set_offset(offset);
 				break
 			};
 
-			full_span = full_span.merge(&value_span);
+			full_span = full_span.merge(&value.span);
 
-			self.expect("`;`", TT::Semicolon)?;
+			self.expect(TT::Semicolon)?;
 
 			props.push(Property {
 				path,
@@ -392,20 +452,15 @@ impl Parser {
 			});
 		}
 
-		fn add_property(map: &mut HashMap<String, ValueExpr>, path: &[String], prop: &Property) -> Result<(), (String, Span)> {
+		fn add_property(map: &mut HashMap<String, PropAsgn>, path: &[String], prop: &Property) -> Result<(), (String, Span)> {
 			if path.len() == 1 {
 				if map.contains_key(&path[0]) {
 					return Err((format!("property `{}` assigned more than once", path[0]), prop.span.clone()));
 				} else {
-					map.insert(path[0].clone(), prop.to_value_expr());
+					map.insert(path[0].clone(), PropAsgn { expr: prop.value.clone(), span: prop.span.clone() });
 				}
-			} else if let Some(Value::Object(map)) = map.get_mut(&path[0]).map(|e| &mut e.value) {
-				add_property(map, &path[1..], prop)?;
 			} else {
-				let mut new_map = HashMap::new();
-				let span = prop.span.clone();
-				add_property(&mut new_map, &path[1..], prop)?;
-				map.insert(path[0].clone(), ValueExpr { value: Value::Object(new_map), span });
+				unimplemented!();
 			}
 			Ok(())
 		}
@@ -422,11 +477,26 @@ impl Parser {
 	}
 
 	fn parse_element(&mut self) -> Result<Element, ()> {
-		let (name, name_span) = self.expect_name()?;
+		let (path, name_span) = self.parse_path()?;
 
 		let illegal_prop_message = "property assignments must occur before any content definitions";
 
-		self.expect("`{`", TT::LBrace)?;
+		let repeater = if let Some(Token { span: for_span, .. }) = self.permit(TT::For) {
+			let (item, item_span) = self.expect_name()?;
+			self.expect(TT::In)?;
+			let collection = self.parse_value()?;
+			let span = for_span.merge(&collection.span);
+			Some(Repeater {
+				index: None,
+				item: if item == "_" { None } else { Some((item, item_span)) },
+				collection,
+				span,
+			})
+		} else {
+			None
+		};
+
+		self.expect(TT::LBrace)?;
 		let props = self.parse_prop_assignments()?;
 
 		let mut children = Vec::new();
@@ -438,6 +508,12 @@ impl Parser {
 				}
 				let child = self.parse_element()?;
 				children.push(Content::Element(child));
+			} else if let Some((value, span)) = self.permit_string() {
+				let value = Expr { value: ExprValue::String(value), span };
+				children.push(Content::Element(Element::text(value)));
+			} else if self.cur().is(TT::LParen) {
+				let value = self.parse_expr()?;
+				children.push(Content::Element(Element::text(value)));
 			} else if self.cur().is(TT::Pub) {
 				self.error(illegal_prop_message, &self.cur().span.clone());
 				return Err(());
@@ -445,13 +521,13 @@ impl Parser {
 				break;
 			}
 		}
-		self.expect("`}`", TT::RBrace)?;
+		self.expect(TT::RBrace)?;
 
 		Ok(Element {
-			path: vec![name],
+			path,
 			data: None,
 			condition: None,
-			repeater: None,
+			repeater,
 			props,
 			children,
 			name_span,

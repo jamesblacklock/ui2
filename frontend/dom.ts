@@ -13,6 +13,7 @@ export * from './brush';
 export * from './transition';
 export * from './binding';
 export * from './model';
+export * as Builtins from './builtins';
 
 export type EventHandler<E> = (el: E, e: Event) => unknown;
 

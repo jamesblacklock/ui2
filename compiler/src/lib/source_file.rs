@@ -5,9 +5,19 @@ pub struct SourceFile {
   pub file_path: PathBuf,
   pub buf: String,
   pub lines: Vec<String>,
+  pub internal: bool,
 }
 
 impl SourceFile {
+  pub fn internal() -> Rc<Self> {
+    Rc::new(SourceFile {
+      file_path: "<internal>".into(),
+      buf: "".into(),
+      lines: Vec::new(),
+      internal: true,
+    })
+  }
+
   pub fn load(file_path: &PathBuf) -> Result<Rc<Self>, ()> {
     let mut buf = String::new();
 		fs::File::open(&file_path)
@@ -26,6 +36,7 @@ impl SourceFile {
       file_path: file_path.clone(),
       buf,
       lines,
+      internal: false,
     }))
   }
 }
@@ -46,6 +57,16 @@ pub struct Span {
 }
 
 impl Span {
+  pub fn internal() -> Span {
+    Span {
+      start_line: 0,
+      start_column: 0,
+      end_line: 0,
+      end_column: 0,
+      source_file: SourceFile::internal(),
+    }
+  }
+
   pub fn merge(&self, other: &Span) -> Span {
     assert!(self.source_file == other.source_file);
     assert!(self.start_line <= other.start_line);

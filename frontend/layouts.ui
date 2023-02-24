@@ -1,22 +1,28 @@
 /* compiler unimplemented features:
   - scoped types (`Enum.Layout`)
-  - for ... in
-  - binding preset clobber detection
-  - scoped identifier in binding expression (`Brush.rgb`)
-  - function call in binding expression (`Brush.rgb(...)`)
-  - text content nodes (`(n)`)
 */
 
-pub layout: Enum.Layout;
+// pub layout: Enum.Layout;
+pub rows: Int;
+pub columns: Int;
 
 Rect {
+  fill: #ddd;
+  x1: -250px;
+  x2: 200px;
+  y1: -100px;
+  y2: 200px;
   Layout {
-    layout: (layout);
-    Pane for n in 6 {
-      Rect {
-        scaleToParent: 1;
-        fill: (Brush.rgb(Math.random(), Math.random(), Math.random()));
-        (n)
+    layout: .column;
+    Pane for y in (rows) {
+      Layout {
+        Pane for x in (columns) {
+          Rect {
+            scaleToParent: 1;
+            fill: (Brush.rgb(Math.random(), Math.random(), Math.random()));
+            (x) " " (y)
+          }
+        }
       }
     }
   }

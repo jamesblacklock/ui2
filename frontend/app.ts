@@ -1,6 +1,6 @@
 import { Dom, Container, Length } from './dom';
 
-import Layouts from './layouts';
+import Layouts from './dist/layouts';
 
 export default function(dom: Dom, frame: Container) {
   const item = new Layouts(dom);
