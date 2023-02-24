@@ -169,22 +169,22 @@ export class Rect extends Container<Rect> {
   scaleToParent = new BindingPreset(Float)
     .addChild(
       this.bindings.x1,
-      [this.privateModel.bindings.parentSize.width],
+      [this.privateModel.bindings.parentSize.width] as const,
       (value, [width]) => width.mul(value.value/2).neg(),
     )
     .addChild(
       this.bindings.x2,
-      [this.privateModel.bindings.parentSize.width],
+      [this.privateModel.bindings.parentSize.width] as const,
       (value, [width]) => width.mul(value.value/2),
     )
     .addChild(
       this.bindings.y1,
-      [this.privateModel.bindings.parentSize.height],
+      [this.privateModel.bindings.parentSize.height] as const,
       (value, [height]) => height.mul(value.value/2).neg(),
     )
     .addChild(
       this.bindings.y2,
-      [this.privateModel.bindings.parentSize.height],
+      [this.privateModel.bindings.parentSize.height] as const,
       (value, [height]) => height.mul(value.value/2),
     );;
 
@@ -194,8 +194,14 @@ export class Rect extends Container<Rect> {
 
   constructor() {
     super(null);
-    this.bindings.width.connect([this.bindings.x1, this.bindings.x2], ([x1, x2]) => x2.sub(x1)).freeze();
-    this.bindings.height.connect([this.bindings.y1, this.bindings.y2], ([y1, y2]) => y2.sub(y1)).freeze();
+    this.bindings.width.connect(
+      [this.bindings.x1, this.bindings.x2] as const,
+      ([x1, x2]) => x2.sub(x1)
+    ).freeze();
+    this.bindings.height.connect(
+      [this.bindings.y1, this.bindings.y2] as const,
+      ([y1, y2]) => y2.sub(y1)
+    ).freeze();
   }
 
   get bindings() {
@@ -311,20 +317,20 @@ export class Pane extends Container<Pane> {
     if(deps.frameSize) {
       this.#privateModel.bindings.selfSize.width.connect(
         [
-          deps.frameSize.width,
+          deps.frameSize.width as Binding<Length>,
           this.#privateModel.bindings.padding,
           this.#privateModel.bindings.siblingCount,
-        ],
+        ] as const,
         ([width, padding, siblingCount]) => {
           return width.sub(padding.mul(2)).div(siblingCount.value);
         },
       );
       this.#privateModel.bindings.selfSize.height.connect(
         [
-          deps.frameSize.height,
+          deps.frameSize.height as Binding<Length>,
           this.#privateModel.bindings.padding,
           this.#privateModel.bindings.siblingCount,
-        ],
+        ] as const,
         ([height, padding, siblingCount]) => height.sub(padding.mul(2)),
       );
     }

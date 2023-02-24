@@ -3,7 +3,7 @@ import { Property } from "./common";
 
 type BindingPresetChild = {
   binding: Binding<any>;
-  ancestors: Binding[];
+  ancestors: readonly Binding[];
   transform: Transformer<Property>;
 };
 
@@ -56,7 +56,7 @@ export class BindingPreset<T extends Property> {
     child.binding.disconnect();
   }
 
-  addChild<P extends Property, A extends any[], AP = { [P in keyof A]: A[P]['value'] }>(
+  addChild<P extends Property, A extends readonly any[], AP = { [P in keyof A]: A[P]['value'] }>(
     binding: Binding<P>,
     ancestors: A,
     transform: (value: T, properties: AP) => P,

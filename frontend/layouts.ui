@@ -1,3 +1,12 @@
+/* compiler unimplemented features:
+  - scoped types (`Enum.Layout`)
+  - for ... in
+  - binding preset clobber detection
+  - scoped identifier in binding expression (`Brush.rgb`)
+  - function call in binding expression (`Brush.rgb(...)`)
+  - text content nodes (`(n)`)
+*/
+
 pub layout: Enum.Layout;
 
 Rect {

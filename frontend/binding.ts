@@ -10,8 +10,8 @@ export class Binding<P extends Property = Property> {
   transitionStartTime = 0;
   transition?: Transition;
   notify?: (prev: P, cur: P) => unknown;
-  descendants: Set<Binding<P>>;
-  ancestors: Binding<P>[] = [];
+  descendants: Set<Binding<Property>>;
+  ancestors: readonly Binding<Property>[] = [];
   transform: Transformer<P> = p => p[0] as P;
   isComputed = false;
   readonly = false;
@@ -68,16 +68,16 @@ export class Binding<P extends Property = Property> {
       throw new Error('cannot rebind: the binding is readonly');
     }
     for(const ancestor of this.ancestors) {
-      ancestor.descendants.delete(this);
+      ancestor.descendants.delete(this as unknown as Binding<Property>);
     }
     this.ancestors = [];
     this.isComputed = false;
   }
 
   connect<
-    A extends any[],
-    AP extends any[] = { [P in keyof A]: A[P]['value'] }
-  >(ancestors: A, transform: Transformer<P, AP> = p => p[0] as P, transition?: Transition) {
+    A extends readonly Binding<any>[],
+    AP = { [P in keyof A]: A[P]['value'] }
+  >(ancestors: A, transform: (properties: AP) => P = p => (p as any)[0] as P, transition?: Transition) {
     this.disconnect();
 
     this.ancestors = ancestors;
@@ -86,7 +86,7 @@ export class Binding<P extends Property = Property> {
     this.isComputed = true;
 
     for(const ancestor of this.ancestors) {
-      ancestor.descendants.add(this);
+      ancestor.descendants.add(this as unknown as Binding<Property>);
     }
 
     this._update();
