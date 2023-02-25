@@ -1,20 +1,21 @@
-use std::path::PathBuf;
-use std::{fmt::Debug};
-use std::collections::HashMap;
 use colored::*;
 use maplit::hashset;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::path::PathBuf;
 
-use crate::{Expr, ExprValue, Ctx};
-use crate::issue::{Issue};
+use crate::issue::Issue;
 use crate::parser::Condition;
+use crate::source_file::Span;
+use crate::{ChildRules, ComponentDef, Ctx, Expr, ExprValue};
 
 use super::{
-	parser::Element as ParserElement,
-	parser::Content as ParserContent,
 	parser::Component as ParserComponent,
+	parser::Content as ParserContent,
+	parser::Element as ParserElement,
 	Module,
-	Type,
 	PropDecl,
+	Type,
 };
 
 pub use super::parser::Children;
@@ -58,14 +59,16 @@ pub struct CheckedExpr {
 
 impl CheckedExpr {
 	fn primitive(expr: Expr, expr_type: Type) -> Self {
-		CheckedExpr { expr, expr_type, bindings: Vec::new() }
+		CheckedExpr {
+			expr,
+			expr_type,
+			bindings: Vec::new(),
+		}
 	}
 }
 
-
 #[derive(Debug, Clone)]
 pub struct CheckedRepeater {
-	// pub repeater: Repeater,
 	pub collection: CheckedExpr,
 	pub item: Option<String>,
 	pub item_type: Type,
@@ -88,17 +91,29 @@ fn try_coerce(value: CheckedExpr, t: &Type) -> CheckedExpr {
 	}
 
 	match (t, value) {
-		(Type::Float, CheckedExpr { expr: Expr { value: ExprValue::Int(n), span }, bindings, .. }) => {
-			CheckedExpr {
-				expr: Expr { value: ExprValue::Float(n as f64), span },
-				expr_type: Type::Float,
+		(Type::Float, CheckedExpr {
+				expr:
+					Expr {
+						value: ExprValue::Int(n),
+						span,
+					},
 				bindings,
-			}
+				..
+		}) => CheckedExpr {
+			expr: Expr {
+				value: ExprValue::Float(n as f64),
+				span,
+			},
+			expr_type: Type::Float,
+			bindings,
 		},
 		(Type::String, CheckedExpr { expr, bindings, .. }) => {
 			let span = expr.span.clone();
 			CheckedExpr {
-				expr: Expr { value: ExprValue::Coerce(Box::new(expr), Type::String), span },
+				expr: Expr {
+					value: ExprValue::Coerce(Box::new(expr), Type::String),
+					span,
+				},
 				expr_type: Type::String,
 				bindings,
 			}
@@ -107,7 +122,11 @@ fn try_coerce(value: CheckedExpr, t: &Type) -> CheckedExpr {
 	}
 }
 
-fn check_expr(scope: &Module, expr: &Expr, implicit_type: Option<&Type>) -> Result<CheckedExpr, ()> {
+fn check_expr(
+	scope: &Module,
+	expr: &Expr,
+	implicit_type: Option<&Type>,
+) -> Result<CheckedExpr, ()> {
 	let expr = expr.clone();
 	let checked = match expr.value {
 		ExprValue::Px(..) => CheckedExpr::primitive(expr, Type::Length),
@@ -126,15 +145,25 @@ fn check_expr(scope: &Module, expr: &Expr, implicit_type: Option<&Type>) -> Resu
 				}
 			};
 			let (enum_name, enum_values) = match implicit_type {
-				Type::EnumLayout => ("Layout".to_owned(), hashset!("row".to_owned(), "column".to_owned())),
+				Type::EnumLayout => (
+					"Layout".to_owned(),
+					hashset!("row".to_owned(), "column".to_owned()),
+				),
 				_ => {
-					let message = format!("expected type `{}`, found unknown enum type", implicit_type.name().cyan());
+					let message = format!(
+						"expected type `{}`, found unknown enum type",
+						implicit_type.name().cyan(),
+					);
 					eprintln!("{}", Issue::error(message, expr.span.clone()));
 					return Err(());
 				}
 			};
 			if !enum_values.contains(&name) {
-				let message = format!("`{}` is not a valid member of enum type `{}`", name, enum_name.cyan());
+				let message = format!(
+					"`{}` is not a valid member of enum type `{}`",
+					name,
+					enum_name.cyan(),
+				);
 				eprintln!("{}", Issue::error(message, expr.span.clone()));
 				return Err(());
 			}
@@ -155,7 +184,11 @@ fn check_expr(scope: &Module, expr: &Expr, implicit_type: Option<&Type>) -> Resu
 			match checked_fn_expr.expr_type {
 				Type::Function(expected_args, ret) => {
 					if received_args.len() != expected_args.len() {
-						let message = format!("expected {} arguments, received {}", expected_args.len(), received_args.len());
+						let message = format!(
+							"expected {} arguments, received {}",
+							expected_args.len(),
+							received_args.len(),
+						);
 						eprintln!("{}", Issue::error(message, expr.span.clone()));
 						return Err(());
 					}
@@ -167,34 +200,56 @@ fn check_expr(scope: &Module, expr: &Expr, implicit_type: Option<&Type>) -> Resu
 					}
 					CheckedExpr {
 						expr: Expr {
-							value: ExprValue::FunctionCall(Box::new(checked_fn_expr.expr), checked_args),
+							value: ExprValue::FunctionCall(
+								Box::new(checked_fn_expr.expr),
+								checked_args,
+							),
 							span: expr.span,
 						},
 						expr_type: *ret,
 						bindings,
 					}
-				},
+				}
 				_ => {
-					let message = format!("expression of type `{}` is not callable", checked_fn_expr.expr_type.name().cyan());
-					eprintln!("{}", Issue::error(message, checked_fn_expr.expr.span.clone()));
+					let message = format!(
+						"expression of type `{}` is not callable",
+						checked_fn_expr.expr_type.name().cyan()
+					);
+					eprintln!(
+						"{}",
+						Issue::error(message, checked_fn_expr.expr.span.clone())
+					);
 					return Err(());
 				}
 			}
-		},
+		}
 		ExprValue::Path(path, ctx) => {
 			assert!(ctx == Ctx::Component);
 			if let Some((checked_ctx, expr_type)) = scope.lookup(&path, &expr.span)? {
-				let bindings = if checked_ctx == Ctx::Component { path.clone() } else { Vec::new() };
+				let bindings = if checked_ctx == Ctx::Component {
+					path.clone()
+				} else {
+					Vec::new()
+				};
 				CheckedExpr {
-					expr: Expr { value: ExprValue::Path(path, checked_ctx), span: expr.span },
+					expr: Expr {
+						value: ExprValue::Path(path, checked_ctx),
+						span: expr.span,
+					},
 					expr_type,
 					bindings,
 				}
 			} else {
-				eprintln!("{}", Issue::error(format!("property not found: `{}`", path[0]), expr.span.clone()));
+				eprintln!(
+					"{}",
+					Issue::error(
+						format!("property not found: `{}`", path[0]),
+						expr.span.clone()
+					)
+				);
 				return Err(());
 			}
-		},
+		}
 	};
 	if let Some(t) = implicit_type {
 		Ok(try_coerce(checked, t))
@@ -203,14 +258,54 @@ fn check_expr(scope: &Module, expr: &Expr, implicit_type: Option<&Type>) -> Resu
 	}
 }
 
-pub fn type_check(scope: &Module, expr: &Expr, t: &Type) -> Result<CheckedExpr, ()> {
+fn type_check(scope: &Module, expr: &Expr, t: &Type) -> Result<CheckedExpr, ()> {
 	let expr = check_expr(scope, expr, Some(t))?;
 	if expr.expr_type != *t {
-		let message = format!("expected type `{}`, found `{}`", t.name().cyan(), expr.expr_type.name().cyan());
+		let message = format!(
+			"expected type `{}`, found `{}`",
+			t.name().cyan(),
+			expr.expr_type.name().cyan()
+		);
 		eprintln!("{}", Issue::error(message, expr.expr.span.clone()));
 		Err(())
 	} else {
 		Ok(expr)
+	}
+}
+
+fn check_child_rules(
+	child: &Element,
+	def: &ComponentDef,
+	parent_span: &Span,
+	child_span: &Span,
+	rules: ChildRules,
+) -> Result<ChildRules, ()> {
+	match &rules {
+		ChildRules::Any => Ok(rules),
+		ChildRules::AnyOf(v) => {
+			// TODO: this is hacky and broken. Don't use name to identify type. Same goes for Component & Function Types
+			if !v.contains(child.tag.path.last().unwrap()) {
+				let permitted = v
+					.iter()
+					.map(|e| format!("`{e}`"))
+					.collect::<Vec<_>>()
+					.join(", ");
+				let message = format!(
+					"invalid child element for `{}` (permitted elements: {permitted})",
+					def.name
+				);
+				eprintln!("{}", Issue::error(message, child_span.clone()));
+				return Err(());
+			}
+			Ok(rules)
+		}
+		ChildRules::Exact(_) => unimplemented!(),
+		ChildRules::ExactCount(_) => unimplemented!(),
+		ChildRules::None => {
+			let message = format!("`{}` component cannot contain children", def.name);
+			eprintln!("{}", Issue::error(message, parent_span.clone()));
+			return Err(());
+		}
 	}
 }
 
@@ -224,7 +319,10 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 		let item_type = if let Some(item_type) = collection.expr_type.iter_type() {
 			item_type
 		} else {
-			let message = format!("type `{}` is not iterable", collection.expr_type.name().cyan());
+			let message = format!(
+				"type `{}` is not iterable",
+				collection.expr_type.name().cyan()
+			);
 			eprintln!("{}", Issue::error(message, collection.expr.span.clone()));
 			return Err(());
 		};
@@ -256,7 +354,13 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 		if prop_def.children.len() > 0 {
 			spans.insert(k.clone(), p.span.clone());
 			checked_presets.insert(k.clone(), expr);
-			clobbered.extend(prop_def.children.clone().into_iter().map(|e| (k.clone(), e)));
+			clobbered.extend(
+				prop_def
+					.children
+					.clone()
+					.into_iter()
+					.map(|e| (k.clone(), e)),
+			);
 		} else {
 			spans.insert(k.clone(), p.span.clone());
 			checked_props.insert(k.clone(), expr);
@@ -266,24 +370,34 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 	for (clobberer, clobbered) in clobbered {
 		if checked_props.contains_key(&clobbered) || checked_presets.contains_key(&clobbered) {
 			let message = format!("`{clobbered}` is overridden by property `{clobberer}`");
-			eprintln!("{}", Issue::error(message, spans.get(&clobbered).unwrap().clone()));
-			return Err(())
+			eprintln!(
+				"{}",
+				Issue::error(message, spans.get(&clobbered).unwrap().clone())
+			);
+			return Err(());
 		}
 	}
 
+	let mut rules = component_def.child_rules.clone();
 	for child in unchecked.children.iter() {
 		match child {
 			ParserContent::Children(c) => {
 				children.push(Content::Children(c.clone()));
-			},
+			}
 			ParserContent::Element(e) => {
-				children.push(Content::Element(check_element(scope, &e)?));
-			},
+				let child_span = &e.name_span;
+				let e = check_element(scope, &e)?;
+				rules = check_child_rules(&e, &component_def, &unchecked.name_span, child_span, rules)?;
+				children.push(Content::Element(e));
+			}
 		}
 	}
 
 	let checked = Element {
-		tag: ElementTag { path: unchecked.path.clone(), import_path: None },
+		tag: ElementTag {
+			path: unchecked.path.clone(),
+			import_path: None,
+		},
 		data: None,
 		condition: unchecked.condition.clone(),
 		repeater,

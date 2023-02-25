@@ -89,12 +89,23 @@ pub struct PropDef {
 pub struct ComponentDef {
 	name: String,
 	props: HashMap<String, PropDef>,
+	container: bool,
+	child_rules: ChildRules,
 }
 
 impl PartialEq for ComponentDef {
 	fn eq(&self, other: &Self) -> bool {
 		self.name == other.name
 	}
+}
+
+#[derive(Debug, Clone)]
+enum ChildRules {
+	Any,
+	None,
+	AnyOf(Vec<String>),
+	Exact(Vec<(String, bool)>),
+	ExactCount(usize),
 }
 
 #[derive(Debug)]
@@ -113,6 +124,8 @@ fn init_builtins() -> HashMap<String, PropDecl> {
 	hashmap![
 		"Rect".to_owned() => PropDecl::component(ComponentDef {
 			name: "Rect".to_owned(),
+			container: true,
+			child_rules: ChildRules::Any,
 			props: hashmap![
 				"x1".to_owned() => PropDef { prop_type: Type::Length, children: vec![] },
 				"y1".to_owned() => PropDef { prop_type: Type::Length, children: vec![] },
@@ -132,6 +145,8 @@ fn init_builtins() -> HashMap<String, PropDecl> {
 		}),
 		"Layout".to_owned() => PropDecl::component(ComponentDef {
 			name: "Layout".to_owned(),
+			container: true,
+			child_rules: ChildRules::AnyOf(vec!["Pane".into()]),
 			props: hashmap![
 				"layout".to_owned() => PropDef { prop_type: Type::EnumLayout, children: vec![] },
 				"padding".to_owned() => PropDef { prop_type: Type::Length, children: vec![] },
@@ -139,10 +154,14 @@ fn init_builtins() -> HashMap<String, PropDecl> {
 		}),
 		"Pane".to_owned() => PropDecl::component(ComponentDef {
 			name: "Pane".to_owned(),
+			container: true,
+			child_rules: ChildRules::Any,
 			props: hashmap![],
 		}),
 		"Text".to_owned() => PropDecl::component(ComponentDef {
 			name: "Text".to_owned(),
+			container: false,
+			child_rules: ChildRules::None,
 			props: hashmap![
 				"content".to_owned() => PropDef { prop_type: Type::String, children: vec![] },
 			],

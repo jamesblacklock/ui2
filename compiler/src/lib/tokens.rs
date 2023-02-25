@@ -353,10 +353,14 @@ impl <'a> Iterator for Tokenizer<'a> {
 			} else if is_digit(c) {
 				let (mut num, mut span) = self.consume(is_digit);
 				let maybe_dot = self.input.chars().nth(0);
-				let maybe_digit = self.input.chars().nth(1);
-				let float = if maybe_dot == Some('.') && is_digit(maybe_digit.unwrap_or('\u{00}')) {
-					let _ = self.consume_single_char();
+				let float = if maybe_dot == Some('.') {
+					let (_, dot_span) = self.consume_single_char();
 					let (num2, span2) = self.consume(is_digit);
+					if num2 == "" {
+						let span = span.merge(&dot_span);
+						self.error("expected digits following decimal point".to_owned(), span.clone());
+						return Some(Token { tok: TT::Err(num + "."), span });
+					}
 					num = format!("{num}.{num2}");
 					span = span.merge(&span2);
 					true
