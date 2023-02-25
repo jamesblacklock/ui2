@@ -239,6 +239,13 @@ impl Parser {
 	def_token_matchers! { permit_hex_color, expect_hex_color, "hex_color", HexColor, String }
 	def_token_matchers! { permit_enum, expect_enum, "enum", Enum, String }
 
+	fn expect_statement_separator(&mut self) -> Result<(), ()> {
+		if !(self.cur().is(TT::RBrace) || self.cur().is(TT::RParen) || self.cur().is(TT::RBrack)) {
+			self.expect(TT::Semicolon)?;
+		}
+		Ok(())
+	}
+
 	fn parse_type(&mut self) -> Result<(Type, Span), ()> {
 		if let Some((name, span)) = self.permit_name() {
 			match name.as_str() {
@@ -443,7 +450,7 @@ impl Parser {
 
 			full_span = full_span.merge(&value.span);
 
-			self.expect(TT::Semicolon)?;
+			self.expect_statement_separator()?;
 
 			props.push(Property {
 				path,

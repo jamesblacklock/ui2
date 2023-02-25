@@ -23,4 +23,11 @@ Rect {
       }
     }
   }
+
+  Text { content: "This is some text."; }
+  "This is some more text."
+
+  "The following two lines are equivalent:"
+  "abc123"
+  Text { content: "abc123" }
 }
