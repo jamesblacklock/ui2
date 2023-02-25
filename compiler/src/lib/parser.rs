@@ -17,7 +17,7 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub struct Repeater {
-	pub index: Option<String>,
+	pub index: Option<(String, Span)>,
 	pub item: Option<(String, Span)>,
 	pub collection: Expr,
 	pub span: Span,
@@ -482,13 +482,24 @@ impl Parser {
 		let illegal_prop_message = "property assignments must occur before any content definitions";
 
 		let repeater = if let Some(Token { span: for_span, .. }) = self.permit(TT::For) {
-			let (item, item_span) = self.expect_name()?;
+			let item_or_index = {
+				let (item, item_span) =	self.expect_name()?;
+				if item == "_" { None } else { Some((item, item_span)) }
+			};
+
+			let (index, item) = if self.permit(TT::Comma).is_some() {
+				let (item, item_span) =	self.expect_name()?;
+				(item_or_index, if item == "_" { None } else { Some((item, item_span)) })
+			} else {
+				(None, item_or_index)
+			};
+
 			self.expect(TT::In)?;
 			let collection = self.parse_value()?;
 			let span = for_span.merge(&collection.span);
 			Some(Repeater {
-				index: None,
-				item: if item == "_" { None } else { Some((item, item_span)) },
+				index,
+				item,
 				collection,
 				span,
 			})

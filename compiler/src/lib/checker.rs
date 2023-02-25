@@ -70,6 +70,7 @@ impl CheckedExpr {
 #[derive(Debug, Clone)]
 pub struct CheckedRepeater {
 	pub collection: CheckedExpr,
+	pub index: Option<String>,
 	pub item: Option<String>,
 	pub item_type: Type,
 	pub root_type: String,
@@ -326,11 +327,15 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 			eprintln!("{}", Issue::error(message, collection.expr.span.clone()));
 			return Err(());
 		};
+		if let Some((binding, span)) = &repeater.index {
+			scope.declare(binding, &Type::Int, span)?;
+		}
 		if let Some((binding, span)) = &repeater.item {
 			scope.declare(binding, &item_type, span)?;
 		}
 		assert!(unchecked.path.len() == 1);
 		Some(CheckedRepeater {
+			index: repeater.index.clone().map(|(s, _)| s),
 			item: repeater.item.clone().map(|(s, _)| s),
 			collection,
 			item_type,

@@ -407,7 +407,7 @@ export class Repeater<P extends Property = Property, E = unknown> extends Compon
   components: Component<E>[] = [];
   parent = new Binding(Container);
 
-  constructor(init: PropertyConstructor<Collection<P>>, private proc: (p: P) => Component<E>[]) {
+  constructor(init: PropertyConstructor<Collection<P>>, private proc: (i: Int, p: P) => Component<E>[]) {
     super();
     this.#model = new Model({
       collection: new Binding(init),
@@ -437,8 +437,9 @@ export class Repeater<P extends Property = Property, E = unknown> extends Compon
 
   _updateItems() {
     const all = [];
+    let i = 0;
     for(const p of this.props.collection.iter()) {
-      all.push(this.proc.call(null, p));
+      all.push(this.proc.call(null, Int.from(i++), p));
     }
     this.components = all.flat();
     this.parent.get().children.update(this);
@@ -453,6 +454,6 @@ export interface Dom {
   Pane(): Pane;
   Repeater<P extends Property, E = unknown>(
     init: PropertyConstructor<Collection<P>>,
-    proc: (p: P) => Component<E>[],
+    proc: (i: Int, p: P) => Component<E>[],
   ): Repeater<P, E>;
 }

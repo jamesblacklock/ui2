@@ -148,12 +148,13 @@ fn generate_element_impl(element: &Element, skip_repeater: bool) -> String {
 	if !skip_repeater && element.repeater.is_some() {
 		let repeater = element.repeater.as_ref().unwrap();
 		let item_type = type_to_js(&repeater.item_type);
-		let args = if let Some(item) = &repeater.item { item.clone() } else { "()".to_owned() };
+		let index  = repeater.index.clone().unwrap_or("_$unused_index".into());
+		let item  = repeater.item.clone().unwrap_or("_$unused_item".into());
 		let collection = generate_property_assignment("collection", &repeater.collection, false);
 		return format!(
 			"(() => {{
 				let e = dom.Repeater<{item_type}, Dom.{}>
-				({item_type}, {args} => {{
+				({item_type}, ({index}, {item}) => {{
 					return [{}];
 				}});
 				{collection}

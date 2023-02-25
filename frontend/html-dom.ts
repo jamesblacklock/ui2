@@ -344,7 +344,7 @@ export class Dom implements dom.Dom {
   }
   Repeater<P extends dom.Property, E = unknown>(
     init: dom.PropertyConstructor<dom.Collection<P>>,
-    proc: (p: P) => dom.Component<E>[]
+    proc: (i: dom.Int, p: P) => dom.Component<E>[]
   ) {
     return new dom.Repeater(init, proc);
   }
