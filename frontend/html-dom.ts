@@ -185,13 +185,14 @@ export class Rect extends dom.Rect implements HtmlComponent {
   }
 
   _fillChanged() {
-    if(this.html === undefined) {
+    if(this.html === undefined || this.fillUpdateRequest !== undefined) {
       return;
     }
     this._updateTransition('background', this.bindings.fill.transition);
     cancelAnimationFrame(this.fillUpdateRequest ?? 0);
 
-    this.fillUpdateRequest = requestAnimationFrame(() => {
+    this.fillUpdateRequest = window.requestAnimationFrame(() => {
+      this.fillUpdateRequest = undefined;
       if(this.html === undefined) {
         return;
       }
@@ -202,7 +203,7 @@ export class Rect extends dom.Rect implements HtmlComponent {
     });
   }
   _positionChanged() {
-    if(this.html === undefined) {
+    if(this.html === undefined || this.positionUpdateRequest != undefined) {
       return;
     }
     this._updateTransition('left', this.bindings.x1.transition);
@@ -210,9 +211,8 @@ export class Rect extends dom.Rect implements HtmlComponent {
     this._updateTransition('top', this.bindings.y1.transition);
     this._updateTransition('bottom', this.bindings.y2.transition);
 
-    cancelAnimationFrame(this.positionUpdateRequest ?? 0);
-    this.positionUpdateRequest = requestAnimationFrame(() => {
-
+    this.positionUpdateRequest = window.requestAnimationFrame(() => {
+      this.positionUpdateRequest = undefined;
       const parentW = this.privateModel.props.parentSize.width;
       const parentH = this.privateModel.props.parentSize.height;
 
@@ -233,10 +233,12 @@ export class Rect extends dom.Rect implements HtmlComponent {
     } else {
       delete this.transitions[key];
     }
-    cancelAnimationFrame(this.transitionUpdateRequest ?? 0);
-    this.transitionUpdateRequest = window.requestAnimationFrame(() => {
-        this.html.style.transition = Object.entries(this.transitions).map(([k, v]) => `${k} ${v}`).join(', ');
-    });
+    if(this.transitionUpdateRequest === undefined) {
+      this.transitionUpdateRequest = window.requestAnimationFrame(() => {
+          this.transitionUpdateRequest = undefined
+          this.html.style.transition = Object.entries(this.transitions).map(([k, v]) => `${k} ${v}`).join(', ');
+      });
+    }
   }
 }
 
@@ -339,9 +341,6 @@ export class Dom implements dom.Dom {
   }
   Pane() {
     return new Pane(this);
-  }
-  Empty() {
-    return new dom.Empty();
   }
   Repeater<P extends dom.Property, E = unknown>(
     init: dom.PropertyConstructor<dom.Collection<P>>,

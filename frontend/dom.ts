@@ -1,6 +1,6 @@
 import { Length } from './length';
 import { Brush } from './brush';
-import { Component, Property, Empty, Collection } from './common';
+import { Component, Property, Collection } from './common';
 import { Binding, PropertyConstructor } from './binding';
 import { Model } from './model';
 import { String, Int, Float } from './types';
@@ -48,14 +48,18 @@ function pointerEvents<E>(element: E) {
 
 
 export abstract class Container<E = unknown, Child = unknown> extends Component<E> {
-  static default() { return new EmptyContainer(null); }
+  static default() { return new NullContainer(null); }
   static coerce(e: any): Container<unknown> { return e instanceof Container ? e : this.default(); }
 
   children: Children<Child>;
 
   constructor(root: Container<E, Child> | null) {
     super();
-    this.children = root?.children ?? new Children(this);
+    if(this instanceof NullContainer) {
+      this.children = new NullChildren(this);
+    } else {
+      this.children = root?.children ?? new Children(this);
+    }
   }
 
   provide(): { [key: string]: any } {
@@ -65,7 +69,7 @@ export abstract class Container<E = unknown, Child = unknown> extends Component<
   }
 }
 
-export class EmptyContainer extends Container {
+export class NullContainer extends Container {
   getRoots() {
     return [];
   }
@@ -125,6 +129,11 @@ export class Children<T = unknown> {
       yield c;
     }
   }
+}
+
+class NullChildren<T> extends Children<T> {
+  append(child: Component<T>) {}
+  update(child: Component<T>) {}
 }
 
 export class Text extends Component<Text> {
@@ -397,7 +406,6 @@ export class Repeater<P extends Property = Property, E = unknown> extends Compon
   #model;
   components: Component<E>[] = [];
   parent = new Binding(Container);
-  // parentHasBeenSet = false;
 
   constructor(init: PropertyConstructor<Collection<P>>, private proc: (p: P) => Component<E>[]) {
     super();
@@ -418,7 +426,6 @@ export class Repeater<P extends Property = Property, E = unknown> extends Compon
 
   inject(deps: { [key: string]: any; }): void {
     this.parent.set(deps.parent.get());
-    // this.parentHasBeenSet = true;
     for(const item of this.components) {
       item.inject(deps);
     }
@@ -444,7 +451,6 @@ export interface Dom {
   Text(): Text;
   Layout(): Layout;
   Pane(): Pane;
-  Empty(): Empty;
   Repeater<P extends Property, E = unknown>(
     init: PropertyConstructor<Collection<P>>,
     proc: (p: P) => Component<E>[],

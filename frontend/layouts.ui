@@ -8,10 +8,7 @@ pub columns: Int;
 
 Rect {
   fill: #ddd;
-  x1: -250px;
-  x2: 200px;
-  y1: -100px;
-  y2: 200px;
+  scaleToParent: 1;
   Layout {
     layout: .column;
     Pane for y in (rows) {
@@ -20,7 +17,7 @@ Rect {
           Rect {
             scaleToParent: 1;
             fill: (Brush.rgb(Math.random(), Math.random(), Math.random()));
-            (x) " " (y)
+            // (x) " " (y)
           }
         }
       }
