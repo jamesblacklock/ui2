@@ -325,7 +325,6 @@ pub enum Type {
 	Brush,
 	String,
 	Boolean,
-	Alignment,
 	EnumLayout,
 	Iter(Box<Type>),
 	Object(HashMap<String, PropDecl>),
@@ -365,14 +364,6 @@ impl Type {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Alignment {
-	Stretch,
-	Start,
-	Center,
-	End,
-}
-
 #[derive(Debug, Clone)]
 pub struct Expr {
 	value: ExprValue,
@@ -388,7 +379,6 @@ pub enum ExprValue {
 	String(String),
 	Enum(String, Option<String>),
 	Boolean(bool),
-	// Alignment(Alignment),
 	Object(HashMap<String, Expr>),
 	Path(Vec<String>, Ctx),
 	Coerce(Box<Expr>, Type),

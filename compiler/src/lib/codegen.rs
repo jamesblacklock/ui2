@@ -144,25 +144,37 @@ fn generate_element(element: &Element) -> String {
 	generate_element_impl(element, false)
 }
 
-fn generate_element_impl(element: &Element, skip_repeater: bool) -> String {
-	if !skip_repeater && element.repeater.is_some() {
-		let repeater = element.repeater.as_ref().unwrap();
-		let item_type = type_to_js(&repeater.item_type);
-		let index  = repeater.index.clone().unwrap_or("_$unused_index".into());
-		let item  = repeater.item.clone().unwrap_or("_$unused_item".into());
-		let collection = generate_property_assignment("collection", &repeater.collection, false);
-		return format!(
-			"(() => {{
-				let e = dom.Repeater<{item_type}, Dom.{}>
-				({item_type}, ({index}, {item}) => {{
-					return [{}];
-				}});
-				{collection}
-				return e;
-			}})()",
-			repeater.root_type,
-			generate_element_impl(element, true)
-		);
+fn generate_element_impl(element: &Element, skip_if_for: bool) -> String {
+	if !skip_if_for {
+		if let Some(condition) = &element.condition {
+			let condition = generate_property_assignment("insert", &condition, false);
+			return format!(
+				"(() => {{
+					let e = dom.Slot();
+					e.props.component = {};
+					{condition}
+					return e;
+				}})()",
+				generate_element_impl(element, true)
+			);
+		} else if let Some(repeater) = &element.repeater {
+			let item_type = type_to_js(&repeater.item_type);
+			let index  = repeater.index.clone().unwrap_or("_$unused_index".into());
+			let item  = repeater.item.clone().unwrap_or("_$unused_item".into());
+			let collection = generate_property_assignment("collection", &repeater.collection, false);
+			return format!(
+				"(() => {{
+					let e = dom.Repeater<{item_type}, Dom.{}>
+					({item_type}, ({index}, {item}) => {{
+						return [{}];
+					}});
+					{collection}
+					return e;
+				}})()",
+				repeater.root_type,
+				generate_element_impl(element, true)
+			);
+		}
 	}
 
 	let props: String = element.props.iter()

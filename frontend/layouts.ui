@@ -5,6 +5,7 @@
 // pub layout: Enum.Layout;
 pub rows: Int;
 pub columns: Int;
+pub q: Boolean;
 
 Rect {
   fill: #ddd;
@@ -24,7 +25,7 @@ Rect {
     }
   }
 
-  Text { content: "This is some text."; }
+  Text if (q) { content: "This is some text."; }
   "This is some more text."
 
   "The following two lines are equivalent:"

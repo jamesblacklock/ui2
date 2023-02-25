@@ -5,7 +5,6 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use crate::issue::Issue;
-use crate::parser::Condition;
 use crate::source_file::Span;
 use crate::{ChildRules, ComponentDef, Ctx, Expr, ExprValue};
 
@@ -36,7 +35,7 @@ pub struct ElementTag {
 pub struct Element {
 	pub tag: ElementTag,
 	pub data: Option<CheckedExpr>,
-	pub condition: Option<Condition>,
+	pub condition: Option<CheckedExpr>,
 	pub repeater: Option<CheckedRepeater>,
 	pub props: HashMap<String, CheckedExpr>,
 	pub presets: HashMap<String, CheckedExpr>,
@@ -315,6 +314,14 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 
 	scope.push_scope();
 
+	assert!(unchecked.condition.is_none() || unchecked.repeater.is_none());
+
+	let condition = if let Some(condition) = &unchecked.condition {
+		Some(type_check(scope, &condition.expr, &Type::Boolean)?)
+	} else {
+		None
+	};
+
 	let repeater = if let Some(repeater) = &unchecked.repeater {
 		let collection = check_expr(scope, &repeater.collection, None)?;
 		let item_type = if let Some(item_type) = collection.expr_type.iter_type() {
@@ -404,7 +411,7 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 			import_path: None,
 		},
 		data: None,
-		condition: unchecked.condition.clone(),
+		condition,
 		repeater,
 		props: checked_props,
 		presets: checked_presets,

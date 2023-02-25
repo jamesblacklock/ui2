@@ -3,7 +3,7 @@ import { Brush } from './brush';
 import { Component, Property, Collection } from './common';
 import { Binding, PropertyConstructor } from './binding';
 import { Model } from './model';
-import { String, Int, Float } from './types';
+import { String, Int, Float, Boolean } from './types';
 import { BindingPreset } from './binding-preset';
 
 export * from './types';
@@ -243,22 +243,26 @@ export class Slot<T = unknown> extends Component<T> {
   #t: 'Slot' = 'Slot';
   #model = new Model({
     component: new Binding(Component),
+    insert: new Binding(Boolean),
   });
 
   parent = new Binding(Container) as Binding<Container<unknown, T>>;
   injected: { [key: string]: any; } = {};
   parentHasBeenSet = false;
+  emptyComponent: Component;
 
   constructor() {
     super();
-    this.bindings.component.onChange(this.updateComponent.bind(this));
+    this.bindings.component.onChange(this._updateComponent.bind(this));
+    this.bindings.insert.onChange(this._updateInsert.bind(this));
+    this.emptyComponent = this.props.component;
   }
 
   inject(deps: { [key: string]: any; }) {
     this.parent.set(deps.parent.get());
     this.parentHasBeenSet = true;
     this.injected = deps;
-    this.updateComponent(this.props.component, this.props.component);
+    this._updateComponent(this.props.component, this.props.component);
   }
 
   get bindings() {
@@ -270,12 +274,18 @@ export class Slot<T = unknown> extends Component<T> {
   }
 
   getRoots(): T[] {
-    return this.props.component.getRoots();
+    return this.props.insert.value ? this.props.component.getRoots() : this.emptyComponent.getRoots();
   }
 
-  private updateComponent(prev: Component, cur: Component) {
+  private _updateComponent(prev: Component, cur: Component) {
     cur.inject(this.injected);
     if(this.parentHasBeenSet && prev !== cur) {
+      this.parent.get().children.update(this);
+    }
+  }
+
+  private _updateInsert() {
+    if(this.parentHasBeenSet) {
       this.parent.get().children.update(this);
     }
   }

@@ -239,9 +239,9 @@ impl Parser {
 	def_token_matchers! { permit_hex_color, expect_hex_color, "hex_color", HexColor, String }
 	def_token_matchers! { permit_enum, expect_enum, "enum", Enum, String }
 
-	fn expect_statement_separator(&mut self) -> Result<(), ()> {
+	fn expect_separator(&mut self, tok: TT) -> Result<(), ()> {
 		if !(self.cur().is(TT::RBrace) || self.cur().is(TT::RParen) || self.cur().is(TT::RBrack)) {
-			self.expect(TT::Semicolon)?;
+			self.expect(tok)?;
 		}
 		Ok(())
 	}
@@ -255,7 +255,6 @@ impl Parser {
 				"Brush" => Ok((Type::Brush, span.clone())),
 				"String" => Ok((Type::String, span.clone())),
 				"Boolean" => Ok((Type::Boolean, span.clone())),
-				"Alignment" => Ok((Type::Alignment, span.clone())),
 				"Callback" => Ok((Type::Callback, span.clone())),
 				_ => {
 					self.error(format!("unrecognized type: {}", name), &span);
@@ -450,7 +449,7 @@ impl Parser {
 
 			full_span = full_span.merge(&value.span);
 
-			self.expect_statement_separator()?;
+			self.expect_separator(TT::Semicolon)?;
 
 			props.push(Property {
 				path,
@@ -488,7 +487,14 @@ impl Parser {
 
 		let illegal_prop_message = "property assignments must occur before any content definitions";
 
-		let repeater = if let Some(Token { span: for_span, .. }) = self.permit(TT::For) {
+		let mut repeater = None;
+		let mut condition = None;
+
+		if let Some(Token { span: if_span, .. }) = self.permit(TT::If) {
+			let expr = self.parse_value()?;
+			let span = if_span.merge(&expr.span);
+			condition = Some(Condition { expr, span });
+		} else if let Some(Token { span: for_span, .. }) = self.permit(TT::For) {
 			let item_or_index = {
 				let (item, item_span) =	self.expect_name()?;
 				if item == "_" { None } else { Some((item, item_span)) }
@@ -504,15 +510,14 @@ impl Parser {
 			self.expect(TT::In)?;
 			let collection = self.parse_value()?;
 			let span = for_span.merge(&collection.span);
-			Some(Repeater {
+
+			repeater = Some(Repeater {
 				index,
 				item,
 				collection,
 				span,
-			})
-		} else {
-			None
-		};
+			});
+		}
 
 		self.expect(TT::LBrace)?;
 		let props = self.parse_prop_assignments()?;
@@ -544,7 +549,7 @@ impl Parser {
 		Ok(Element {
 			path,
 			data: None,
-			condition: None,
+			condition,
 			repeater,
 			props,
 			children,

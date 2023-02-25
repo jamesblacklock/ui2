@@ -58,7 +58,7 @@ export class Boolean extends ScalarValueProperty<boolean> {
   static true = new Boolean(true);
   static false = new Boolean(false);
   static from(value: boolean) { return value ? this.true : this.false; };
-  static default() { return this.true; }
+  static default() { return this.false; }
   static coerce(e: any) {
     if(e instanceof Boolean) {
       return e;
