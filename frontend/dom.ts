@@ -1,9 +1,9 @@
 import { Length } from './length';
 import { Brush } from './brush';
-import { Component, Property, Collection } from './common';
-import { Binding, PropertyConstructor } from './binding';
+import { Component, Property, PropertyConstructor } from './common';
+import { Binding } from './binding';
 import { Model } from './model';
-import { String, Int, Float, Boolean } from './types';
+import { String, Int, Float, Boolean, Iter } from './types';
 import { BindingPreset } from './binding-preset';
 
 export * from './types';
@@ -44,8 +44,6 @@ function pointerEvents<E>(element: E) {
     click: new EventEmitter<E>(element),
   }
 }
-
-
 
 export abstract class Container<E = unknown, Child = unknown> extends Component<E> {
   static default() { return new NullContainer(null); }
@@ -132,8 +130,8 @@ export class Children<T = unknown> {
 }
 
 class NullChildren<T> extends Children<T> {
-  append(child: Component<T>) {}
-  update(child: Component<T>) {}
+  append(_child: Component<T>) {}
+  update(_child: Component<T>) {}
 }
 
 export class Text extends Component<Text> {
@@ -417,10 +415,10 @@ export class Repeater<P extends Property = Property, E = unknown> extends Compon
   components: Component<E>[] = [];
   parent = new Binding(Container);
 
-  constructor(init: PropertyConstructor<Collection<P>>, private proc: (i: Int, p: P) => Component<E>[]) {
+  constructor(init: PropertyConstructor<P>, private proc: (i: Int, p: P) => Component<E>[]) {
     super();
     this.#model = new Model({
-      collection: new Binding(init),
+      collection: new Binding(Iter.of(init)),
     });
 
     this.bindings.collection.onChange(() => this._updateItems());
@@ -463,7 +461,7 @@ export interface Dom {
   Layout(): Layout;
   Pane(): Pane;
   Repeater<P extends Property, E = unknown>(
-    init: PropertyConstructor<Collection<P>>,
+    init: PropertyConstructor<P>,
     proc: (i: Int, p: P) => Component<E>[],
   ): Repeater<P, E>;
 }

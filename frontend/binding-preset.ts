@@ -1,5 +1,5 @@
-import { Binding, PropertyConstructor, Transformer } from "./binding";
-import { Property } from "./common";
+import { Binding, Transformer } from "./binding";
+import { Property, PropertyConstructor } from "./common";
 
 type BindingPresetChild = {
   binding: Binding<any>;

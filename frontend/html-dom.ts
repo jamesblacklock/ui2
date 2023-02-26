@@ -343,7 +343,7 @@ export class Dom implements dom.Dom {
     return new Pane(this);
   }
   Repeater<P extends dom.Property, E = unknown>(
-    init: dom.PropertyConstructor<dom.Collection<P>>,
+    init: dom.PropertyConstructor<P>,
     proc: (i: dom.Int, p: P) => dom.Component<E>[]
   ) {
     return new dom.Repeater(init, proc);

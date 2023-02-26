@@ -7,7 +7,7 @@ use issue::{Issue};
 use maplit::hashmap;
 use source_file::Span;
 
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 mod tokens;
 mod parser;
@@ -100,12 +100,39 @@ impl PartialEq for ComponentDef {
 }
 
 #[derive(Debug, Clone)]
-enum ChildRules {
-	Any,
-	None,
-	AnyOf(Vec<String>),
-	Exact(Vec<(String, bool)>),
-	ExactCount(usize),
+pub struct ChildRules {
+	pub any: bool,
+	pub any_of: HashSet<Vec<String>>,
+	pub one_of: HashSet<Vec<String>>,
+}
+
+impl ChildRules {
+	fn any() -> Self {
+		ChildRules { any: true, any_of: HashSet::new(), one_of: HashSet::new() }
+	}
+
+	fn none() -> Self {
+		ChildRules { any: false, any_of: HashSet::new(), one_of: HashSet::new() }
+	}
+
+	fn any_of<S: AsRef<str>>(any_of: &[&[S]]) -> Self {
+		ChildRules {
+			any: false,
+			any_of: any_of
+				.iter()
+				.map(|v| {
+					v.iter()
+						.map(|s| s.as_ref().to_owned())
+						.collect::<Vec<String>>()
+				})
+				.collect(),
+			one_of: HashSet::new(),
+		}
+	}
+
+	fn is_container(&self) -> bool {
+		self.any || !self.any_of.is_empty() || !self.one_of.is_empty()
+	}
 }
 
 #[derive(Debug)]
@@ -125,7 +152,7 @@ fn init_builtins() -> HashMap<String, PropDecl> {
 		"Rect".to_owned() => PropDecl::component(ComponentDef {
 			name: "Rect".to_owned(),
 			container: true,
-			child_rules: ChildRules::Any,
+			child_rules: ChildRules::any(),
 			props: hashmap![
 				"x1".to_owned() => PropDef { prop_type: Type::Length, children: vec![] },
 				"y1".to_owned() => PropDef { prop_type: Type::Length, children: vec![] },
@@ -146,7 +173,7 @@ fn init_builtins() -> HashMap<String, PropDecl> {
 		"Layout".to_owned() => PropDecl::component(ComponentDef {
 			name: "Layout".to_owned(),
 			container: true,
-			child_rules: ChildRules::AnyOf(vec!["Pane".into()]),
+			child_rules: ChildRules::any_of(&[&["Pane"]]),
 			props: hashmap![
 				"layout".to_owned() => PropDef { prop_type: Type::EnumLayout, children: vec![] },
 				"padding".to_owned() => PropDef { prop_type: Type::Length, children: vec![] },
@@ -155,13 +182,13 @@ fn init_builtins() -> HashMap<String, PropDecl> {
 		"Pane".to_owned() => PropDecl::component(ComponentDef {
 			name: "Pane".to_owned(),
 			container: true,
-			child_rules: ChildRules::Any,
+			child_rules: ChildRules::any(),
 			props: hashmap![],
 		}),
 		"Text".to_owned() => PropDecl::component(ComponentDef {
 			name: "Text".to_owned(),
 			container: false,
-			child_rules: ChildRules::None,
+			child_rules: ChildRules::none(),
 			props: hashmap![
 				"content".to_owned() => PropDef { prop_type: Type::String, children: vec![] },
 			],
@@ -350,6 +377,7 @@ impl Type {
 			Type::String => "String".to_owned(),
 			Type::Boolean => "Boolean".to_owned(),
 			Type::Object(..) => "Object".to_owned(),
+			Type::Iter(t) => format!("[{}]", t.name()),
 			Type::Module(..) => "Module".to_owned(),
 			Type::Component(def) => def.name.clone(),
 			_ => unimplemented!("{:?}", self),
@@ -359,6 +387,7 @@ impl Type {
 	fn iter_type(&self) -> Option<Type> {
 		match self {
 			Type::Int => Some(Type::Int),
+			Type::Iter(t) => Some(*t.clone()),
 			_ => None,
 		}
 	}

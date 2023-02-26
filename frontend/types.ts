@@ -1,4 +1,4 @@
-import { Collection, Property } from "./common";
+import { Collection, Property, PropertyConstructor } from "./common";
 
 abstract class ScalarValueProperty<T> implements Property {
   constructor(readonly value: T) {}
@@ -96,5 +96,53 @@ export class String extends ScalarValueProperty<string> {
   constructor(value: string) { super(value); }
   interpolate(next: this, _fac: number): this {
       return next;
+  }
+}
+
+export class Iter<T extends Property> implements Collection<T> {
+  static of<P extends Property>(init: PropertyConstructor<P>): PropertyConstructor<Collection<P>> {
+    function defaultFn(): Collection<P> {
+      return new Iter(init);
+    }
+
+    function coerceFn(e: any): Collection<P> {
+      if(typeof e?.constructor?.prototype.iter === 'function') {
+        return e;
+      } else if(e?.[Symbol.iterator]) {
+        const arr: P[] = [];
+        for(const item of e?.[Symbol.iterator]()) {
+          arr.push(init.coerce(item));
+        }
+        return List.from(arr);
+      } else {
+        return defaultFn();
+      }
+    }
+
+    return { default: defaultFn, coerce: coerceFn };
+  }
+  constructor(public init: PropertyConstructor<T>) {}
+  equals(other: this) {
+    return this === other;
+  }
+  interpolate(next: this, _fac: number): this {
+    return next;
+  }
+  *iter() {}
+}
+
+export class List<T extends Property> implements Collection<T> {
+  static from<P extends Property>(value: P[]): List<P> { return new List(value); };
+  constructor(public value: T[] = []) {}
+  equals(other: this) {
+    return this === other;
+  }
+  interpolate(next: this, _fac: number): this {
+    return next;
+  }
+  *iter() {
+    for(const item of this.value) {
+      yield item;
+    }
   }
 }

@@ -1,8 +1,7 @@
-import { Property } from './common';
+import { Property, PropertyConstructor } from './common';
 import { Transition } from './transition';
 
 export type Transformer<P extends Property, A extends any[] = Property[]> = (p: A) => P;
-export type PropertyConstructor<P extends Property> = { default: () => P, coerce: (e: any) => P };
 
 export class Binding<P extends Property = Property> {
   prevValue?: P;

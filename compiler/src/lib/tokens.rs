@@ -18,6 +18,8 @@ pub enum TT {
 	String(String),
 	Number((String, bool, String)),
 	HexColor(String),
+	Child,
+	Children,
 	True,
 	False,
 	Pub,
@@ -52,6 +54,8 @@ impl TT {
 			TT::String(..) => "string".to_owned(),
 			TT::Number(..) => "number".to_owned(),
 			TT::HexColor(..) => "hex color".to_owned(),
+			TT::Child => "@child".to_owned(),
+			TT::Children => "@children".to_owned(),
 			TT::True => "true".to_owned(),
 			TT::False => "false".to_owned(),
 			TT::Pub => "pub".to_owned(),
@@ -158,8 +162,8 @@ fn is_name_first(c: char) -> bool {
 
 fn is_op_one(c: char) -> bool {
 	c == '{' || c == '}' || c == '(' || c == ')' ||
-	c == ':' || c == ';' || c == '+' || c == '-' ||
-	c == '*' || c == ','
+	c == '[' || c == ']' || c == ':' || c == ';' ||
+	c == '+' || c == '-' || c == '*' || c == ','
 }
 
 impl <'a> Tokenizer<'a> {
@@ -305,6 +309,8 @@ impl <'a> Tokenizer<'a> {
 			'}' => Token { tok: TT::RBrace, span },
 			'(' => Token { tok: TT::LParen, span },
 			')' => Token { tok: TT::RParen, span },
+			'[' => Token { tok: TT::LBrack, span },
+			']' => Token { tok: TT::RBrack, span },
 			':' => Token { tok: TT::Colon, span },
 			';' => Token { tok: TT::Semicolon, span },
 			'+' => Token { tok: TT::Plus, span },
@@ -400,6 +406,19 @@ impl <'a> Iterator for Tokenizer<'a> {
 				let (_, dot_span) = self.consume_single_char();
 				let (name, name_span) = self.consume(is_name);
 				return Some(Token { tok: TT::Enum(name), span: dot_span.merge(&name_span) });
+			} else if c == '@' {
+				let (_, at_span) = self.consume_single_char();
+				let (name, name_span) = self.consume(is_name);
+				let span = at_span.merge(&name_span);
+				if name == "child" {
+					return Some(Token { tok: TT::Child, span });
+				} else if name == "children" {
+					return Some(Token { tok: TT::Children, span: at_span.merge(&name_span) });
+				} else {
+					let name = format!("@{}", name);
+					self.error(format!("encountered illegal designator: `{}` (expected `@child` or `@children`)", name), span.clone());
+					return Some(Token { tok: TT::Err(name), span });
+				}
 			} else if is_op_one(c) {
 				let (c, span) = self.consume_single_char();
 				return Some(self.op_one_token(c, span));

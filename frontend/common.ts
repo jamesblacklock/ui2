@@ -3,6 +3,8 @@ export interface Property {
   interpolate(next: this, fac: number): this;
 }
 
+export type PropertyConstructor<P extends Property> = { default: () => P, coerce: (e: any) => P };
+
 export interface Collection<P extends Property> extends Property {
   iter(): Generator<P>;
 }

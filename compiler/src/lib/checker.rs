@@ -1,6 +1,6 @@
 use colored::*;
 use maplit::hashset;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::path::PathBuf;
 
@@ -47,6 +47,7 @@ pub struct Component {
 	pub name: String,
 	pub root: Element,
 	pub props: Vec<PropDecl>,
+	pub child_rules: ChildRules,
 }
 
 #[derive(Debug, Clone)]
@@ -76,9 +77,11 @@ pub struct CheckedRepeater {
 }
 
 pub fn check_component(scope: &mut Module, unchecked: &ParserComponent) -> Result<Component, ()> {
+	let mut child_rules = ChildRules::none();
 	let checked = Component {
 		name: unchecked.name.clone(),
-		root: check_element(scope, &unchecked.root)?,
+		root: check_element(scope, &unchecked.root, &mut child_rules)?,
+		child_rules,
 		props: unchecked.props.values().cloned().collect(),
 	};
 
@@ -278,38 +281,32 @@ fn check_child_rules(
 	def: &ComponentDef,
 	parent_span: &Span,
 	child_span: &Span,
-	rules: ChildRules,
+	mut rules: ChildRules,
 ) -> Result<ChildRules, ()> {
-	match &rules {
-		ChildRules::Any => Ok(rules),
-		ChildRules::AnyOf(v) => {
-			// TODO: this is hacky and broken. Don't use name to identify type. Same goes for Component & Function Types
-			if !v.contains(child.tag.path.last().unwrap()) {
-				let permitted = v
-					.iter()
-					.map(|e| format!("`{e}`"))
-					.collect::<Vec<_>>()
-					.join(", ");
-				let message = format!(
-					"invalid child element for `{}` (permitted elements: {permitted})",
-					def.name
-				);
-				eprintln!("{}", Issue::error(message, child_span.clone()));
-				return Err(());
-			}
-			Ok(rules)
-		}
-		ChildRules::Exact(_) => unimplemented!(),
-		ChildRules::ExactCount(_) => unimplemented!(),
-		ChildRules::None => {
-			let message = format!("`{}` component cannot contain children", def.name);
-			eprintln!("{}", Issue::error(message, parent_span.clone()));
-			return Err(());
-		}
+	if rules.any {
+		Ok(rules)
+	} else if rules.any_of.contains(&child.tag.path) {
+		// TODO: this is hacky and broken. Don't use name to identify type. Same goes for Component & Function Types
+		Ok(rules)
+	} else if rules.one_of.remove(&child.tag.path) {
+		Ok(rules)
+	} else {
+		let permitted: HashSet<_> = rules.any_of.iter().chain(rules.one_of.iter()).collect();
+		let (message, span) = if permitted.len() > 0 {
+			let permitted = permitted.iter()
+				.map(|e| format!("`{}`", e.join(".")))
+				.collect::<Vec<_>>()
+				.join(", ");
+			(format!("invalid child element for `{}` (expected: {permitted})", def.name), child_span.clone())
+		} else {
+			(format!("`{}` component cannot contain children", def.name), parent_span.clone())
+		};
+		eprintln!("{}", Issue::error(message, span));
+		return Err(());
 	}
 }
 
-pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<Element, ()> {
+pub fn check_element(scope: &mut Module, unchecked: &ParserElement, child_rules: &mut ChildRules) -> Result<Element, ()> {
 	let mut children = Vec::new();
 
 	scope.push_scope();
@@ -382,10 +379,7 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 	for (clobberer, clobbered) in clobbered {
 		if checked_props.contains_key(&clobbered) || checked_presets.contains_key(&clobbered) {
 			let message = format!("`{clobbered}` is overridden by property `{clobberer}`");
-			eprintln!(
-				"{}",
-				Issue::error(message, spans.get(&clobbered).unwrap().clone())
-			);
+			eprintln!("{}", Issue::error(message, spans.get(&clobbered).unwrap().clone()));
 			return Err(());
 		}
 	}
@@ -394,11 +388,31 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement) -> Result<El
 	for child in unchecked.children.iter() {
 		match child {
 			ParserContent::Children(c) => {
+				if child_rules.any {
+					let message = format!("child mount point conflicts with previous child mount point");
+					eprintln!("{}", Issue::error(message, c.span.clone()));
+					return Err(());
+				} else if c.filter.len() > 0 {
+					for item in &c.filter {
+						if child_rules.one_of.contains(&item.0) || child_rules.any_of.contains(&item.0) {
+							let path = item.0.join(".");
+							let message = format!("child mount point for `{path}` conflicts with previous child mount point", );
+							eprintln!("{}", Issue::error(message, item.1.clone()));
+							return Err(());
+						} else if c.single {
+							child_rules.one_of.insert(item.0.clone());
+						} else {
+							child_rules.any_of.insert(item.0.clone());
+						}
+					}
+				} else {
+					child_rules.any = true;
+				}
 				children.push(Content::Children(c.clone()));
 			}
 			ParserContent::Element(e) => {
 				let child_span = &e.name_span;
-				let e = check_element(scope, &e)?;
+				let e = check_element(scope, &e, child_rules)?;
 				rules = check_child_rules(&e, &component_def, &unchecked.name_span, child_span, rules)?;
 				children.push(Content::Element(e));
 			}

@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::cell::Cell;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use convert_case::{Casing, Case};
 use maplit::hashmap;
@@ -46,6 +47,23 @@ pub struct Element {
 	pub name_span: Span,
 }
 
+#[derive(Debug, Clone)]
+pub struct Path(pub Vec<String>, pub Span);
+
+impl Hash for Path {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+			self.0.hash(state);
+	}
+}
+
+impl PartialEq for Path {
+	fn eq(&self, other: &Self) -> bool {
+		self.0 == other.0
+	}
+}
+
+impl Eq for Path {}
+
 impl Element {
 	fn text(value: Expr) -> Self {
 		let name_span = value.span.clone();
@@ -88,7 +106,8 @@ struct Property {
 #[derive(Debug, Clone)]
 pub struct Children {
 	pub single: bool,
-	pub filter: Option<Vec<String>>,
+	pub filter: HashSet<Path>,
+	pub span: Span,
 }
 
 #[derive(Debug)]
@@ -261,6 +280,10 @@ impl Parser {
 					Err(())
 				}
 			}
+		} else if let Some(Token { span: start_span, .. }) = self.permit(TT::LBrack) {
+			let (item_type, _) = self.parse_type()?;
+			let Token { span: end_span, .. } = self.expect(TT::RBrack)?;
+			Ok((Type::Iter(Box::new(item_type)), start_span.merge(&end_span)))
 		} else {
 			unimplemented!()
 		}
@@ -537,6 +560,25 @@ impl Parser {
 			} else if self.cur().is(TT::LParen) {
 				let value = self.parse_expr()?;
 				children.push(Content::Element(Element::text(value)));
+			} else if self.cur().is(TT::Child) || self.cur().is(TT::Children) {
+				let Token { tok, mut span } = self.permit(TT::Child).unwrap_or_else(|| self.permit(TT::Children).unwrap());
+				let single = tok == TT::Child;
+				let filter = if self.permit(TT::LParen).is_some() {
+					let mut filter = HashSet::new();
+					loop {
+						let (path, path_span) = self.parse_path()?;
+						filter.insert(Path(path, path_span));
+						self.expect_separator(TT::Comma)?;
+						if let Some(rparen) = self.permit(TT::RParen) {
+							span = span.merge(&rparen.span);
+							break;
+						}
+					}
+					filter
+				} else {
+					HashSet::new()
+				};
+				children.push(Content::Children(Children { single, filter, span }))
 			} else if self.cur().is(TT::Pub) {
 				self.error(illegal_prop_message, &self.cur().span.clone());
 				return Err(());

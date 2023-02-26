@@ -9,7 +9,7 @@ use crate::{Type, checker::Content, ExprValue, Ctx, chk::CheckedExpr};
 
 use super::checker::{Component, Element};
 
-fn type_to_js(prop_type: &Type) -> String {
+fn type_to_js(prop_type: &Type, in_type_position: bool) -> String {
 	match prop_type {
 		Type::Int => "Dom.Int".to_owned(),
 		Type::Float => "Dom.Float".to_owned(),
@@ -17,6 +17,14 @@ fn type_to_js(prop_type: &Type) -> String {
 		Type::Brush => "Dom.Brush".to_owned(),
 		Type::String => "Dom.String".to_owned(),
 		Type::Boolean => "Dom.Boolean".to_owned(),
+		Type::Iter(item_type) => {
+			let item_type = type_to_js(item_type, in_type_position);
+			if in_type_position {
+				format!("Dom.Collection<{}>", item_type)
+			} else {
+				format!("Dom.Iter.of({})", item_type)
+			}
+		},
 		_ => unimplemented!(),
 	}
 }
@@ -130,7 +138,7 @@ fn expr_to_js(value: &ExprValue) -> String {
 			format!("{}{}", ctx, path.join("."))
 		},
 		ExprValue::Coerce(expr, coerce_type) => {
-			format!("{}.coerce({})", type_to_js(coerce_type), expr_to_js(&expr.value))
+			format!("{}.coerce({})", type_to_js(coerce_type, false), expr_to_js(&expr.value))
 		},
 		ExprValue::FunctionCall(expr, args) => {
 			let args = args.iter().map(|e| expr_to_js(&e.value)).collect::<Vec<String>>().join(", ");
@@ -158,7 +166,7 @@ fn generate_element_impl(element: &Element, skip_if_for: bool) -> String {
 				generate_element_impl(element, true)
 			);
 		} else if let Some(repeater) = &element.repeater {
-			let item_type = type_to_js(&repeater.item_type);
+			let item_type = type_to_js(&repeater.item_type, true);
 			let index  = repeater.index.clone().unwrap_or("_$unused_index".into());
 			let item  = repeater.item.clone().unwrap_or("_$unused_item".into());
 			let collection = generate_property_assignment("collection", &repeater.collection, false);
@@ -186,7 +194,9 @@ fn generate_element_impl(element: &Element, skip_if_for: bool) -> String {
 			Content::Element(e) => {
 				format!("e.children.append({});", generate_element(e))
 			},
-			_ => unimplemented!(),
+			Content::Children(c) => {
+				unimplemented!()
+			},
 		}
 	}).collect();
 	format!(
@@ -207,28 +217,34 @@ pub fn generate<P: Into<PathBuf>>(
 	let component_name = &component.name;
 	let model_props: String = component.props
 		.iter()
-		.map(|prop| { format!("{}: new Dom.Binding({}),", prop.name, type_to_js(&prop.prop_type)) })
+		.map(|prop| {
+			format!(
+				"{}: new Dom.Binding({}), ",
+				prop.name,
+				type_to_js(&prop.prop_type, false),
+			)
+		})
 		.collect();
 	let model = format!("#model = new Dom.Model({{{model_props}}});");
 	let root_class = format!("{}", component.root.tag.path[0]);
+	let extends = if component.child_rules.is_container() { "Container" } else { "Component" };
 	let root = format!("readonly root: Dom.{root_class};");
 	let events = format!("readonly events: Dom.{root_class}['events'];");
 	let root_setup = format!("this.root = {}", generate_element(&component.root));
-	let constructor_body = format!("super(); {root_setup}; this.events = this.root.events; ");
+	let super_arg = if component.child_rules.is_container() { "null" } else { "" };
+	let constructor_body = format!("super({super_arg}); {root_setup}; this.events = this.root.events; ");
 	let constructor = format!("constructor(dom: Dom.Dom) {{{constructor_body}}}");
-	let impls = format!("{} {} {} {} {}",
-		"get props() { return this.#model.props; }",
-		"get bindings() { return this.#model.bindings; }",
-		"getRoots() { return [this.root]; }",
-		"get children() { return this.root.children }",
-		"inject(deps: { [key: string]: any }) { this.root.inject(deps); }",
-	);
+	let impls = "
+		get props() { return this.#model.props; }
+		get bindings() { return this.#model.bindings; }
+		getRoots() { return [this.root]; }
+		inject(deps: { [key: string]: any }) { this.root.inject(deps); }";
 	let class_body = format!("{model} {root} {events} {constructor} {impls}");
 
 	writeln!(ctx.file, "import * as Dom from '../dom';").unwrap();
 	writeln!(
 		ctx.file,
-		"export default class {component_name} extends Dom.Component<Dom.{root_class}> {{{class_body}}}",
+		"export default class {component_name} extends Dom.{extends}<Dom.{root_class}> {{{class_body}}}",
 	).unwrap();
 
 	ctx.finalize();

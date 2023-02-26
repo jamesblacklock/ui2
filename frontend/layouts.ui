@@ -6,6 +6,7 @@
 pub rows: Int;
 pub columns: Int;
 pub q: Boolean;
+pub r: [Int];
 
 Rect {
   fill: #ddd;
@@ -26,9 +27,12 @@ Rect {
   }
 
   Text if (q) { content: "This is some text."; }
+  
+  @children
+  
   "This is some more text."
 
-  "The following two lines are equivalent:"
-  "abc123"
-  Text { content: "abc123" }
+  Text for x in (r) {
+    content: ("a")
+  }
 }
