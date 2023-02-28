@@ -1,8 +1,9 @@
 use core::fmt;
 use std::cell::RefCell;
 use std::rc::Weak;
-use crate::{Property, DynProperty, PropertyCell};
-use crate::value::{Value, ValueItem, WrappedValue};
+use super::{Property, DynProperty, PropertyCell};
+use super::value::{Value, ValueItem, WrappedValue};
+use crate::{println, eprintln};
 
 pub trait Parents {
 	type Values: Values + 'static;
@@ -180,6 +181,12 @@ pub struct ChildTransform<V: Value + 'static, T: Values, F: Fn(T) -> V> {
 	pub child: Weak<PropertyCell<V>>,
 }
 
+pub struct DynChildTransform<V: Value + 'static, F: Fn(Vec<WrappedValue>) -> V> {
+	pub values: RefCell<Vec<WrappedValue>>,
+	pub transform: F,
+	pub child: Weak<PropertyCell<V>>,
+}
+
 pub trait ChildTransformTrait {
 	fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result;
 	fn parent_value_changed(&self, value: WrappedValue, index: usize);
@@ -205,5 +212,22 @@ impl <V: Value, T: Values, F: Fn(T) -> V> ChildTransformTrait for ChildTransform
 	}
 	fn update_value(&self) {
 		self.child.upgrade().unwrap().borrow_mut().value = V::item((self.transform)(self.values.borrow().clone()));
+	}
+}
+
+impl <V: Value + 'static, F: Fn(Vec<WrappedValue>) -> V> ChildTransformTrait for DynChildTransform<V, F> {
+	fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "{:?}", self.values)
+	}
+	fn parent_value_changed(&self, value: WrappedValue, index: usize) {
+		self.values.borrow_mut()[index] = value;
+	}
+	fn get_child(&self) -> Box<dyn DynProperty> {
+		DynProperty::clone(&self.child)
+	}
+	fn update_value(&self) {
+		if let Some(child) = self.child.upgrade() {
+			child.borrow_mut().value = V::item((self.transform)(self.values.borrow().clone()));
+		}
 	}
 }

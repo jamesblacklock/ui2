@@ -3,7 +3,7 @@
     "outDir": "./dist/",
     "noImplicitReturns": true,
     "sourceMap": true,
-    "module": "esnext",
+    "module": "es6",
     "target": "esnext",
     "allowJs": true,
     "moduleResolution": "node",
