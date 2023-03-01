@@ -10,7 +10,7 @@ use std::{rc::{Rc, Weak}, cell::{RefCell, RefMut}, mem, collections::HashSet, ha
 
 use transform::{ChildTransformTrait, ChildTransform, Parents};
 
-use value::{Value};
+use value::{Value, ToValue};
 
 pub use value::WrappedValue;
 
@@ -35,39 +35,8 @@ impl PropertyFactory {
 		})))
 	}
 
-	pub fn new<V: Value>(&self, listener: Option<Box<dyn Listener>>) -> Property<V> {
-		let value = V::item(V::default());
-		Property::new(Rc::downgrade(&self.0), value, listener)
-	}
-
-	pub fn int<I: Into<i32>>(&self, value: I, listener: Option<Box<dyn Listener>>) -> Property<i32> {
-		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value, listener)
-	}
-
-	pub fn string<S: Into<String>>(&self, value: S, listener: Option<Box<dyn Listener>>) -> Property<String> {
-		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value, listener)
-	}
-
-	pub fn boolean<B: Into<bool>>(&self, value: B, listener: Option<Box<dyn Listener>>) -> Property<bool> {
-		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value, listener)
-	}
-
-	pub fn float<F: Into<f64>>(&self, value: F, listener: Option<Box<dyn Listener>>) -> Property<f64> {
-		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value, listener)
-	}
-
-	pub fn length<L: Into<Length>>(&self, value: L, listener: Option<Box<dyn Listener>>) -> Property<Length> {
-		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value, listener)
-	}
-
-	pub fn brush<B: Into<Brush>>(&self, value: B, listener: Option<Box<dyn Listener>>) -> Property<Brush> {
-		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value, listener)
+	pub fn new<V: Value, W: ToValue<V>>(&self, value: W, listener: Option<Box<dyn Listener>>) -> Property<V> {
+		Property::new(Rc::downgrade(&self.0), V::item(value.to_value()), listener)
 	}
 
 	pub fn bind<
@@ -345,13 +314,13 @@ impl <V: Value> Drop for Property<V> {
 #[test]
 fn tests() {
 	let factory = PropertyFactory::new_factory();
-	let a = factory.int(7, None);
+	let a = factory.new(7, None);
 	let b = factory.bind((&a,), |(a,)| a == 7, None);
 
 	assert!(a.get() == 7);
 	assert!(b.get() == true);
 
-	let c = factory.string("a", None);
+	let c = factory.new("a", None);
 	a.bind((&c,), |(c,)| (c.as_bytes()[0] - 91) as _);
 
 	assert!(a.get() == 6);     // `bind()` sets the value immediately
@@ -364,7 +333,7 @@ fn tests() {
 	assert!(b.get() == false); // `b` was added to the `change_set` and updated
 	assert!(&*c.get() == "a");
 
-	let d = factory.string("B", None);
+	let d = factory.new("B", None);
 	c.bind((&d,), |(d,)| d.to_lowercase());
 	factory.commit_changes();
 

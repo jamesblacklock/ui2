@@ -1,7 +1,7 @@
 use std::{
 	alloc::{alloc, dealloc, Layout},
 	mem,
-	marker::PhantomData, ptr,
+	marker::PhantomData, ptr, rc::Rc, ops::Deref,
 };
 
 use crate::{println, eprintln};
@@ -46,6 +46,50 @@ impl <T> Abi<T> {
 
   fn into_runtime_temporary(self) -> &'static mut T {
     Box::leak(self.into_runtime())
+  }
+}
+
+trait IntoRuntime<T> {
+  fn into_runtime(item: Self) -> T;
+}
+impl <T: Clone + 'static> IntoRuntime<T> for Abi<T> {
+  fn into_runtime(item: Self) -> T {
+    item.into_runtime_temporary().clone()
+  }
+}
+impl IntoRuntime<bool> for bool {
+  fn into_runtime(item: bool) -> bool { item }
+}
+impl IntoRuntime<i32> for i32 {
+  fn into_runtime(item: i32) -> i32 { item }
+}
+impl IntoRuntime<f64> for f64 {
+  fn into_runtime(item: f64) -> f64 { item }
+}
+impl IntoRuntime<String> for Abi<AbiBuffer> {
+  fn into_runtime(item: Abi<AbiBuffer>) -> String {
+    item.into_runtime_temporary().to_string()
+  }
+}
+
+trait IntoAbi<T> {
+  fn into_abi(item: T) -> Self;
+}
+impl <T> IntoAbi<T> for Abi<T> {
+  fn into_abi(item: T) -> Self { Abi::into_abi(item) }
+}
+impl IntoAbi<bool> for bool {
+  fn into_abi(item: bool) -> bool { item }
+}
+impl IntoAbi<i32> for i32 {
+  fn into_abi(item: i32) -> i32 { item }
+}
+impl IntoAbi<f64> for f64 {
+  fn into_abi(item: f64) -> f64 { item }
+}
+impl IntoAbi<Rc<String>> for Abi<AbiBuffer> {
+  fn into_abi(item: Rc<String>) -> Abi<AbiBuffer> {
+    Abi::into_abi(AbiBuffer::from_string(item.deref().clone()))
   }
 }
 
@@ -181,8 +225,9 @@ impl AbiFunction {
     let args = Abi::into_abi(vec);
     unsafe { __dispatch_function(self.0, args.0) }
   }
-  pub fn dispatch_box<T: std::fmt::Debug, U>(&self, vec: Vec<T>) -> Box<U> {
-    Abi::into_runtime(Abi(self.dispatch_usize(vec), PhantomData))
+  pub fn dispatch_box<T: std::fmt::Debug, U: Clone + 'static>(&self, vec: Vec<T>) -> U {
+    let value: &mut U = Abi::into_runtime_temporary(Abi(self.dispatch_usize(vec), PhantomData));
+    value.clone()
   }
   pub fn dispatch_void<T: std::fmt::Debug>(&self, vec: Vec<T>) {
     self.dispatch_usize(vec);

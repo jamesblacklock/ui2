@@ -1,17 +1,17 @@
 use core::fmt;
-use std::rc::Rc;
+use std::{rc::Rc, ops::Deref};
 use crate::{println, eprintln};
 
 pub mod length;
 pub mod brush;
+pub mod layout;
 
 use length::Length;
 use brush::Brush;
+use layout::Layout;
 
 // NOT IMPLEMENTED:
-// Brush
 // Component
-// LayoutEnum
 // Iter
 // List
 
@@ -23,7 +23,20 @@ pub trait Value: fmt::Debug {
 	type Item: ValueItem;
 	fn default() -> Self;
 	fn item(value: Self) -> Self::Item;
+	fn from_item(value: Self::Item) -> Self;
 	fn wrapped(value: Self::Item) -> WrappedValue;
+}
+
+pub trait ToValue<T: Value> {
+	fn to_value(self) -> T;
+}
+
+impl <T: Value> ToValue<T> for T {
+	fn to_value(self) -> T { self }
+}
+
+impl ToValue<String> for &'static str {
+	fn to_value(self) -> String { self.to_owned() }
 }
 
 // Values need to be "wrappable" so that they can be passed uniformly through
@@ -36,6 +49,7 @@ pub enum WrappedValue {
 	String(Rc<String>),
 	Length(Length),
 	Brush(Brush),
+	EnumLayout(Layout),
 }
 
 impl WrappedValue {
@@ -75,17 +89,24 @@ impl WrappedValue {
 			_ => Brush::default(),
 		}
 	}
+	pub fn unwrap_enum_layout(&self) -> Layout {
+		match self {
+			WrappedValue::EnumLayout(layout) => *layout,
+			_ => Layout::default(),
+		}
+	}
 }
 
 pub trait ValueItem: Clone + fmt::Debug + PartialEq {
 	fn unwrapped(value: WrappedValue) -> Self;
 }
 
-// the implementation of `Value` & `ValueItem` for `f64`
+// the implementation of `Value` for `f64`
 impl Value for f64 {
 	type Item = f64;
 	fn default() -> Self { 0.0 }
 	fn item(value: Self) -> Self::Item { value }
+	fn from_item(value: Self::Item) -> Self { value }
 	fn wrapped(value: Self::Item) -> WrappedValue { WrappedValue::Float(value) }
 }
 impl ValueItem for f64 {
@@ -94,11 +115,12 @@ impl ValueItem for f64 {
 	}
 }
 
-// the implementation of `Value` & `ValueItem` for `f64`
+// the implementation of `Value` for `f64`
 impl Value for bool {
 	type Item = bool;
 	fn default() -> Self { false }
 	fn item(value: Self) -> Self::Item { value }
+	fn from_item(value: Self::Item) -> Self { value }
 	fn wrapped(value: Self::Item) -> WrappedValue { WrappedValue::Boolean(value) }
 }
 impl ValueItem for bool {
@@ -107,11 +129,12 @@ impl ValueItem for bool {
 	}
 }
 
-// the implementation of `Value` & `ValueItem` for `i32`
+// the implementation of `Value` for `i32`
 impl Value for i32 {
 	type Item = i32;
 	fn default() -> Self { 0 }
 	fn item(value: Self) -> Self::Item { value }
+	fn from_item(value: Self::Item) -> Self { value }
 	fn wrapped(value: Self::Item) -> WrappedValue { WrappedValue::Int(value) }
 }
 impl ValueItem for i32 {
@@ -120,11 +143,12 @@ impl ValueItem for i32 {
 	}
 }
 
-// the implementation of `Value` & `ValueItem` for `String`
+// the implementation of `Value` for `String`
 impl Value for String {
 	type Item = Rc<String>;
 	fn default() -> Self { String::new() }
 	fn item(value: Self) -> Self::Item { Rc::new(value)	}
+	fn from_item(value: Self::Item) -> Self { value.deref().clone() }
 	fn wrapped(value: Self::Item) -> WrappedValue { WrappedValue::String(value) }
 }
 impl ValueItem for Rc<String> {

@@ -15,15 +15,10 @@ impl Brush {
 
 impl Value for Brush {
   type Item = Brush;
-  fn default() -> Self {
-    Brush::transparent()
-  }
-  fn item(value: Self) -> Self::Item {
-    value
-  }
-  fn wrapped(brush: Self::Item) -> WrappedValue {
-    WrappedValue::Brush(brush)
-  }
+  fn default() -> Self { Brush::transparent() }
+  fn item(value: Self) -> Self::Item { value }
+  fn from_item(value: Self::Item) -> Self { value }
+  fn wrapped(brush: Self::Item) -> WrappedValue { WrappedValue::Brush(brush) }
 }
 
 impl ValueItem for Brush {

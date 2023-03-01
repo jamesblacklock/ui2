@@ -66,6 +66,13 @@ interface Abi {
   property__brush__set: PropertyMethodTable['set'];
   property__brush__unbind: PropertyMethodTable['unbind'];
   property__brush__weakref: PropertyMethodTable['weakref'];
+  property__enum_layout__bind: PropertyMethodTable['bind'];
+  property__enum_layout__drop: PropertyMethodTable['drop'];
+  property__enum_layout__freeze: PropertyMethodTable['freeze'];
+  property__enum_layout__get: PropertyMethodTable['get'];
+  property__enum_layout__set: PropertyMethodTable['set'];
+  property__enum_layout__unbind: PropertyMethodTable['unbind'];
+  property__enum_layout__weakref: PropertyMethodTable['weakref'];
   property__weakref__drop(ptr: number): void;
   property_factory__commit_changes(ptr: number): number;
   property_factory__drop(ptr: number): void;
@@ -76,6 +83,7 @@ interface Abi {
   property_factory__new_property__string(ptr: number, notify: number): number;
   property_factory__new_property__length(ptr: number, notify: number): number;
   property_factory__new_property__brush(ptr: number, notify: number): number;
+  property_factory__new_property__enum_layout(ptr: number, notify: number): number;
   vec__weakref_property__drop(ptr: number): void;
   vec__weakref_property__get(ptr: number): number;
   vec__weakref_property__len(ptr: number): number;
@@ -99,6 +107,8 @@ interface Abi {
   wrapped_value__unwrap_length(ptr: number): number;
   wrapped_value__wrap_brush(ptr: number): number;
   wrapped_value__unwrap_brush(ptr: number): number;
+  wrapped_value__wrap_enum_layout(ptr: number): number;
+  wrapped_value__unwrap_enum_layout(ptr: number): number;
   wrapped_value__drop(ptr: number): void;
   length__px(value: number): number;
   length__cm(value: number): number;
@@ -294,6 +304,16 @@ const BRUSH_TABLE: PropertyMethodTable<Brush> = {
   bind: ABI.property__brush__bind,
   unbind: ABI.property__brush__unbind,
 };
+const ENUM_LAYOUT_TABLE: PropertyMethodTable<Enum.Layout> = {
+  new: ABI.property_factory__new_property__enum_layout,
+  drop: ABI.property__enum_layout__drop,
+  get: ptr => Enum.Layout.__fromInt(ABI.property__enum_layout__get(ptr)),
+  set: (ptr, value, resptr) => ABI.property__enum_layout__set(ptr, value.value, resptr),
+  weakref: ABI.property__enum_layout__weakref,
+  freeze: ABI.property__enum_layout__freeze,
+  bind: ABI.property__enum_layout__bind,
+  unbind: ABI.property__enum_layout__unbind,
+};
 
 class PropertyFactoryClass {
   private ptr: number;
@@ -333,6 +353,11 @@ class PropertyFactoryClass {
     let table = BRUSH_TABLE;
     return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
+  layout(notify?: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
+    let table = ENUM_LAYOUT_TABLE;
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
+  }
   commitChanges() {
     if(this.commitChangesRequested === undefined) {
       this.commitChangesRequested = requestAnimationFrame(() => {
@@ -362,6 +387,7 @@ export class Property<V = any> {
     this.table.set.call(null, this.ptr, value, this.result.ptr);
     this.result.verify();
     this.factory.commitChanges();
+    return this;
   }
   freeze() {
     this.table.freeze.call(null, this.ptr);
@@ -387,6 +413,9 @@ export class Property<V = any> {
   }
   unbind() {
     this.table.unbind.call(null, this.ptr);
+  }
+  toString() {
+    return `Property(${String(this.get())})`;
   }
 }
 
@@ -479,13 +508,15 @@ class PropertyVec extends Vec<PropertyWeakRef, Property<any>> {
   }
 }
 
+const BOOLEAN = 0;
+const INT = 1;
+const FLOAT = 2;
+const STRING = 3;
+const LENGTH = 4;
+const BRUSH = 5;
+const ENUM_LAYOUT = 6;
+
 class WrappedValue {
-  static BOOLEAN = 0;
-  static INT = 1;
-  static FLOAT = 2;
-  static STRING = 3;
-  static LENGTH = 4;
-  static BRUSH = 5;
 
   static wrap(value: number|string|Length|Brush) {
     let ptr;
@@ -515,18 +546,20 @@ class WrappedValue {
   }
   unwrap() {
     const tag = this.tag();
-    if(tag === WrappedValue.INT) {
+    if(tag === INT) {
       return ABI.wrapped_value__unwrap_int(this.ptr);
-    } else if(tag === WrappedValue.INT) {
+    } else if(tag === BOOLEAN) {
       return ABI.wrapped_value__unwrap_boolean(this.ptr) != 0;
-    } else if(tag === WrappedValue.FLOAT) {
+    } else if(tag === FLOAT) {
       return ABI.wrapped_value__unwrap_float(this.ptr);
-    } else if(tag === WrappedValue.STRING) {
+    } else if(tag === STRING) {
       return AbiBuffer.fromRuntimePtr(ABI.wrapped_value__unwrap_string(this.ptr)).toString();
-    } else if(tag === WrappedValue.LENGTH) {
+    } else if(tag === LENGTH) {
       return Length.__fromRuntimePtr(ABI.wrapped_value__unwrap_length(this.ptr));
-    } else if(tag === WrappedValue.BRUSH) {
+    } else if(tag === BRUSH) {
       return Brush.__fromRuntimePtr(ABI.wrapped_value__unwrap_brush(this.ptr));
+    } else if(tag === ENUM_LAYOUT) {
+      return Enum.Layout.__fromInt(ABI.wrapped_value__unwrap_enum_layout(this.ptr));
     } else {
       throw new Error('unimplemented');
     }
@@ -626,5 +659,23 @@ export class Brush {
   }
   valueOf() {
     return this.toString();
+  }
+}
+
+export namespace Enum {
+  export class Layout {
+    static Row = new Layout(0);
+    static Column = new Layout(1);
+    static __fromInt(value: number) {
+      return value === Layout.Column.value ? Layout.Column : Layout.Row;
+    }
+    constructor(readonly value: number) {
+      if(Layout.Column !== undefined) {
+        throw new Error('cannot construct new instances of Enum.Layout');
+      }
+    }
+    toString() {
+      return this === Layout.Column ? '.column' : '.row';
+    }
   }
 }

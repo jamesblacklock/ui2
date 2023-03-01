@@ -35,15 +35,10 @@ impl Length {
 
 impl Value for Length {
   type Item = Length;
-  fn default() -> Self {
-    Length::Px(0.0)
-  }
-  fn item(value: Self) -> Self::Item {
-    value
-  }
-  fn wrapped(value: Self::Item) -> WrappedValue {
-    WrappedValue::Length(value)
-  }
+  fn default() -> Self { Length::Px(0.0) }
+  fn item(value: Self) -> Self::Item { value }
+  fn from_item(value: Self::Item) -> Self { value }
+  fn wrapped(value: Self::Item) -> WrappedValue { WrappedValue::Length(value) }
 }
 
 impl ValueItem for Length {
