@@ -42,7 +42,7 @@ interface Abi {
   property__int__drop: PropertyMethodTable['drop'];
   property__int__freeze: PropertyMethodTable['freeze'];
   property__int__get: PropertyMethodTable['get'];
-  property__int__set: PropertyMethodTable<bigint, bigint>['set'];
+  property__int__set: PropertyMethodTable['set'];
   property__int__unbind: PropertyMethodTable['unbind'];
   property__int__weakref: PropertyMethodTable['weakref'];
   property__string__bind: PropertyMethodTable['bind'];
@@ -52,6 +52,20 @@ interface Abi {
   property__string__set: PropertyMethodTable['set'];
   property__string__unbind: PropertyMethodTable['unbind'];
   property__string__weakref: PropertyMethodTable['weakref'];
+  property__length__bind: PropertyMethodTable['bind'];
+  property__length__drop: PropertyMethodTable['drop'];
+  property__length__freeze: PropertyMethodTable['freeze'];
+  property__length__get: PropertyMethodTable['get'];
+  property__length__set: PropertyMethodTable['set'];
+  property__length__unbind: PropertyMethodTable['unbind'];
+  property__length__weakref: PropertyMethodTable['weakref'];
+  property__brush__bind: PropertyMethodTable['bind'];
+  property__brush__drop: PropertyMethodTable['drop'];
+  property__brush__freeze: PropertyMethodTable['freeze'];
+  property__brush__get: PropertyMethodTable['get'];
+  property__brush__set: PropertyMethodTable['set'];
+  property__brush__unbind: PropertyMethodTable['unbind'];
+  property__brush__weakref: PropertyMethodTable['weakref'];
   property__weakref__drop(ptr: number): void;
   property_factory__commit_changes(ptr: number): number;
   property_factory__drop(ptr: number): void;
@@ -60,6 +74,8 @@ interface Abi {
   property_factory__new_property__float(ptr: number, notify: number): number;
   property_factory__new_property__int(ptr: number, notify: number): number;
   property_factory__new_property__string(ptr: number, notify: number): number;
+  property_factory__new_property__length(ptr: number, notify: number): number;
+  property_factory__new_property__brush(ptr: number, notify: number): number;
   vec__weakref_property__drop(ptr: number): void;
   vec__weakref_property__get(ptr: number): number;
   vec__weakref_property__len(ptr: number): number;
@@ -71,7 +87,7 @@ interface Abi {
   vec__wrapped_value__new(): number;
   vec__wrapped_value__push(ptr: number): number;
   wrapped_value__tag(ptr: number): number;
-  wrapped_value__wrap_int(ptr: bigint): number;
+  wrapped_value__wrap_int(ptr: number): number;
   wrapped_value__unwrap_int(ptr: number): number;
   wrapped_value__wrap_boolean(ptr: number): number;
   wrapped_value__unwrap_boolean(ptr: number): number;
@@ -79,7 +95,26 @@ interface Abi {
   wrapped_value__unwrap_float(ptr: number): number;
   wrapped_value__wrap_string(ptr: number): number;
   wrapped_value__unwrap_string(ptr: number): number;
+  wrapped_value__wrap_length(ptr: number): number;
+  wrapped_value__unwrap_length(ptr: number): number;
+  wrapped_value__wrap_brush(ptr: number): number;
+  wrapped_value__unwrap_brush(ptr: number): number;
   wrapped_value__drop(ptr: number): void;
+  length__px(value: number): number;
+  length__cm(value: number): number;
+  length__in(value: number): number;
+  length__html_vw(value: number): number;
+  length__html_vh(value: number): number;
+  length__add(lptr: number, rptr: number): number;
+  length__sub(lptr: number, rptr: number): number;
+  length__mul(ptr: number, value: number): number;
+  length__div(ptr: number, value: number): number;
+  length__neg(ptr: number): number;
+  length__to_string(ptr: number): number;
+  length__drop(ptr: number): void;
+  brush__rgba(r: number, g: number, b: number, a: number): number;
+  brush__to_string(ptr: number): number;
+  brush__drop(ptr: number): void;
 }
 
 const wasm_imports = {
@@ -203,7 +238,7 @@ const INT_TABLE: PropertyMethodTable<number> = {
   new: ABI.property_factory__new_property__int,
   drop: ABI.property__int__drop,
   get: ptr => Number(ABI.property__int__get(ptr)),
-  set: (ptr, value, resptr) => ABI.property__int__set(ptr, BigInt(value), resptr),
+  set: (ptr, value, resptr) => ABI.property__int__set(ptr, value, resptr),
   weakref: ABI.property__int__weakref,
   freeze: ABI.property__int__freeze,
   bind: ABI.property__int__bind,
@@ -239,8 +274,28 @@ const BOOLEAN_TABLE: PropertyMethodTable<boolean> = {
   bind: ABI.property__boolean__bind,
   unbind: ABI.property__boolean__unbind,
 };
+const LENGTH_TABLE: PropertyMethodTable<Length> = {
+  new: ABI.property_factory__new_property__length,
+  drop: ABI.property__length__drop,
+  get: ptr => Length.__fromRuntimePtr(ABI.property__length__get(ptr)),
+  set: (ptr, value, resptr) => ABI.property__length__set(ptr, value.ptr, resptr),
+  weakref: ABI.property__length__weakref,
+  freeze: ABI.property__length__freeze,
+  bind: ABI.property__length__bind,
+  unbind: ABI.property__length__unbind,
+};
+const BRUSH_TABLE: PropertyMethodTable<Brush> = {
+  new: ABI.property_factory__new_property__brush,
+  drop: ABI.property__brush__drop,
+  get: ptr => Brush.__fromRuntimePtr(ABI.property__brush__get(ptr)),
+  set: (ptr, value, resptr) => ABI.property__brush__set(ptr, value.ptr, resptr),
+  weakref: ABI.property__brush__weakref,
+  freeze: ABI.property__brush__freeze,
+  bind: ABI.property__brush__bind,
+  unbind: ABI.property__brush__unbind,
+};
 
-export class PropertyFactory {
+class PropertyFactoryClass {
   private ptr: number;
   private commitChangesRequested: number|undefined = undefined;
 
@@ -248,25 +303,35 @@ export class PropertyFactory {
     this.ptr = ABI.property_factory__new_factory();
     FINALIZER.register(this, {ptr: this.ptr, drop: ABI.property_factory__drop});
   }
-  int(notify: () => unknown) {
+  int(notify?: () => unknown) {
     let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = INT_TABLE;
-    return Property.int(this, table.new.call(null, this.ptr, notifyPtr), table);
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
-  string(notify: () => unknown) {
+  string(notify?: () => unknown) {
     let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = STRING_TABLE;
-    return Property.string(this, table.new.call(null, this.ptr, notifyPtr), table);
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
-  float(notify: () => unknown) {
+  float(notify?: () => unknown) {
     let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = FLOAT_TABLE;
-    return Property.float(this, table.new.call(null, this.ptr, notifyPtr), table);
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
-  boolean(notify: () => unknown) {
+  boolean(notify?: () => unknown) {
     let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = BOOLEAN_TABLE;
-    return Property.boolean(this, table.new.call(null, this.ptr, notifyPtr), table);
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
+  }
+  length(notify?: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
+    let table = LENGTH_TABLE;
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
+  }
+  brush(notify?: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
+    let table = BRUSH_TABLE;
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
   commitChanges() {
     if(this.commitChangesRequested === undefined) {
@@ -278,30 +343,22 @@ export class PropertyFactory {
   }
 }
 
-class Property<Get, Set = Get> {
-  static int(factory: PropertyFactory, ptr: number, table: PropertyMethodTable<number>) {
-    return new Property(factory, ptr, table);
-  }
-  static string(factory: PropertyFactory, ptr: number, table: PropertyMethodTable<string>) {
-    return new Property<string>(factory, ptr, table);
-  }
-  static boolean(factory: PropertyFactory, ptr: number, table: PropertyMethodTable<boolean>) {
-    return new Property<boolean>(factory, ptr, table);
-  }
-  static float(factory: PropertyFactory, ptr: number, table: PropertyMethodTable<number>) {
-    return new Property(factory, ptr, table);
-  }
+export const PropertyFactory = new PropertyFactoryClass();
 
+export type PropertyValues<P> = { [Q in keyof P]: P[Q] extends Property<infer X> ? X : never };
+export type Transformer<P, V> = (values: PropertyValues<P>) => V;
+
+export class Property<V = any> {
   private result: AbiResult;
 
-  constructor(private factory: PropertyFactory, private ptr: number, private table: PropertyMethodTable<Get, Set>) {
+  constructor(private factory: PropertyFactoryClass, private ptr: number, private table: PropertyMethodTable<V, V>) {
     this.result = AbiResult.new();
     FINALIZER.register(this, { ptr: this.ptr, drop: table.drop });
   }
   get() {
     return this.table.get.call(null, this.ptr);
   }
-  set(value: Set) {
+  set(value: V) {
     this.table.set.call(null, this.ptr, value, this.result.ptr);
     this.result.verify();
     this.factory.commitChanges();
@@ -312,10 +369,7 @@ class Property<Get, Set = Get> {
   weakref() {
     return PropertyWeakRef.fromRuntimePtr(this.table.weakref.call(null, this.ptr));
   }
-  bind<
-    P extends readonly Property<any>[],
-    PV extends { [Q in keyof P]: P[Q] extends Property<infer X, infer Y> ? X : never },
-  >(parents: P, fn: (values: PV) => Get) {
+  bind<P extends readonly Property<any>[]>(parents: P, fn: Transformer<P, V>) {
     const vec = PropertyVec.new();
     for(const parent of parents) {
       vec.push(parent);
@@ -323,12 +377,13 @@ class Property<Get, Set = Get> {
     const wrapperFn = (argsptr: number) => {
       const args = ValueVec.fromRuntimePtr(argsptr);
       const values = args.toArray().map(e => e.unwrap());
-      let result = fn(values as unknown as PV);
+      let result = fn(values as unknown as PropertyValues<P>);
       const wrapped = WrappedValue.wrap(result as string | number).ptr;
       return wrapped;
     };
     this.table.bind.call(null, this.ptr, vec.ptr, addToHeap(wrapperFn), this.result.ptr);
     this.result.verify();
+    return this;
   }
   unbind() {
     this.table.unbind.call(null, this.ptr);
@@ -352,7 +407,9 @@ type VecConfig<Get, Push> = {
   ftoptr: (item: Push) => number;
   ffromptr: (ptr: number) => Get;
 };
+
 type VecClass<Get, Push> = typeof Vec<Get, Push>;
+
 class Vec<Get, Push> {
   static _new<Get, Push>(
     vecClass: VecClass<Get, Push>,
@@ -426,18 +483,24 @@ class WrappedValue {
   static BOOLEAN = 0;
   static INT = 1;
   static FLOAT = 2;
-  static STRING = 1;
+  static STRING = 3;
+  static LENGTH = 4;
+  static BRUSH = 5;
 
-  static wrap(value: number|string) {
+  static wrap(value: number|string|Length|Brush) {
     let ptr;
     if(typeof value === 'number') {
       if(Math.abs(value) === value) {
-        ptr = ABI.wrapped_value__wrap_int(BigInt(value));
+        ptr = ABI.wrapped_value__wrap_int(value);
       } else {
         ptr = ABI.wrapped_value__wrap_float(value);
       }
     } else if(typeof value === 'string') {
       ptr = ABI.wrapped_value__wrap_string(AbiBuffer.fromString(value).ptr);
+    } else if(value instanceof Length) {
+      ptr = ABI.wrapped_value__wrap_length(value.ptr);
+    } else if(value instanceof Brush) {
+      ptr = ABI.wrapped_value__wrap_brush(value.ptr);
     } else {
       throw new Error('unimplemented');
     }
@@ -447,13 +510,23 @@ class WrappedValue {
     return new WrappedValue(ptr);
   }
 
-  constructor(readonly ptr: number) {}
+  constructor(readonly ptr: number) {
+    FINALIZER.register(this, {ptr: this.ptr, drop: ABI.wrapped_value__drop});
+  }
   unwrap() {
     const tag = this.tag();
     if(tag === WrappedValue.INT) {
-      return Number(ABI.wrapped_value__unwrap_int(this.ptr));
+      return ABI.wrapped_value__unwrap_int(this.ptr);
+    } else if(tag === WrappedValue.INT) {
+      return ABI.wrapped_value__unwrap_boolean(this.ptr) != 0;
+    } else if(tag === WrappedValue.FLOAT) {
+      return ABI.wrapped_value__unwrap_float(this.ptr);
     } else if(tag === WrappedValue.STRING) {
       return AbiBuffer.fromRuntimePtr(ABI.wrapped_value__unwrap_string(this.ptr)).toString();
+    } else if(tag === WrappedValue.LENGTH) {
+      return Length.__fromRuntimePtr(ABI.wrapped_value__unwrap_length(this.ptr));
+    } else if(tag === WrappedValue.BRUSH) {
+      return Brush.__fromRuntimePtr(ABI.wrapped_value__unwrap_brush(this.ptr));
     } else {
       throw new Error('unimplemented');
     }
@@ -474,5 +547,84 @@ class ValueVec extends Vec<WrappedValue, string|number> {
       ffromptr: (ptr: number) => WrappedValue.fromRuntimePtr(ptr)
     }
     return Vec._fromRuntimePtr(this, config, ptr, ABI.vec__wrapped_value__drop);
+  }
+}
+
+export class Length {
+  static px(value: number) {
+    return new Length(value, ABI.length__px);
+  }
+  static cm(value: number) {
+    return new Length(value, ABI.length__cm);
+  }
+  static in(value: number) {
+    return new Length(value, ABI.length__in);
+  }
+  static __htmlVw(value: number) {
+    return new Length(value, ABI.length__html_vw);
+  }
+  static __htmlVh(value: number) {
+    return new Length(value, ABI.length__html_vh);
+  }
+  static __fromRuntimePtr(ptr: number) {
+    return new Length(ptr);
+  }
+
+  readonly ptr: number;
+
+  constructor(ptrOrValue: number, fn?: (value: number) => number) {
+    if(fn) {
+      this.ptr = fn(ptrOrValue);
+    } else {
+      this.ptr = ptrOrValue;
+    }
+    FINALIZER.register(this, {ptr: this.ptr, drop: ABI.length__drop});
+  }
+  add(rhs: Length) {
+    return new Length(ABI.length__add(this.ptr, rhs.ptr));
+  }
+  sub(rhs: Length) {
+    return new Length(ABI.length__sub(this.ptr, rhs.ptr));
+  }
+  mul(rhs: number) {
+    return new Length(ABI.length__mul(this.ptr, rhs));
+  }
+  div(rhs: number) {
+    return new Length(ABI.length__div(this.ptr, rhs));
+  }
+  neg() {
+    return new Length(ABI.length__neg(this.ptr));
+  }
+  toString() {
+    return AbiBuffer.fromRuntimePtr(ABI.length__to_string(this.ptr)).toString();
+  }
+  valueOf() {
+    return this.toString();
+  }
+}
+
+export class Brush {
+  static get RED() { return Brush.rgba(1, 0, 0, 1); }
+  static get GREEN() { return Brush.rgba(0, 1, 0, 1); }
+  static get BLUE() { return Brush.rgba(0, 0, 1, 1); }
+  static get WHITE() { return Brush.rgba(1, 1, 1, 1); }
+  static get BLACK() { return Brush.rgba(0, 0, 0, 1); }
+  static get TRANSPARENT() { return Brush.rgba(0, 0, 0, 0); }
+
+  static rgba(r: number, g: number, b: number, a: number) {
+    return new Brush(ABI.brush__rgba(r, g, b, a));
+  }
+  static __fromRuntimePtr(ptr: number) {
+    return new Brush(ptr);
+  }
+
+  constructor(readonly ptr: number) {
+    FINALIZER.register(this, {ptr: this.ptr, drop: ABI.brush__drop});
+  }
+  toString() {
+    return AbiBuffer.fromRuntimePtr(ABI.brush__to_string(this.ptr)).toString();
+  }
+  valueOf() {
+    return this.toString();
   }
 }

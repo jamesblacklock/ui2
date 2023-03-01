@@ -2,7 +2,7 @@
 // - transitions
 // - optional interpolation on `get()` using `transitionStartTime` and `prevValue`
 
-mod value;
+pub mod value;
 mod transform;
 
 use core::fmt;
@@ -16,7 +16,7 @@ pub use value::WrappedValue;
 
 use crate::{println, eprintln};
 
-use self::{transform::DynChildTransform};
+use self::{transform::DynChildTransform, value::{length::Length, brush::Brush}};
 
 #[derive(Debug)]
 pub struct PropertyFactory(Rc<RefCell<PropertyFactoryImpl>>);
@@ -40,7 +40,7 @@ impl PropertyFactory {
 		Property::new(Rc::downgrade(&self.0), value, listener)
 	}
 
-	pub fn int<I: Into<i64>>(&self, value: I, listener: Option<Box<dyn Listener>>) -> Property<i64> {
+	pub fn int<I: Into<i32>>(&self, value: I, listener: Option<Box<dyn Listener>>) -> Property<i32> {
 		let value = Value::item(value.into());
 		Property::new(Rc::downgrade(&self.0), value, listener)
 	}
@@ -56,6 +56,16 @@ impl PropertyFactory {
 	}
 
 	pub fn float<F: Into<f64>>(&self, value: F, listener: Option<Box<dyn Listener>>) -> Property<f64> {
+		let value = Value::item(value.into());
+		Property::new(Rc::downgrade(&self.0), value, listener)
+	}
+
+	pub fn length<L: Into<Length>>(&self, value: L, listener: Option<Box<dyn Listener>>) -> Property<Length> {
+		let value = Value::item(value.into());
+		Property::new(Rc::downgrade(&self.0), value, listener)
+	}
+
+	pub fn brush<B: Into<Brush>>(&self, value: B, listener: Option<Box<dyn Listener>>) -> Property<Brush> {
 		let value = Value::item(value.into());
 		Property::new(Rc::downgrade(&self.0), value, listener)
 	}

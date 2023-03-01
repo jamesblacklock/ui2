@@ -2,7 +2,9 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::{mem};
 use crate::abi::{Abi, AbiResult, AbiFunction};
+use crate::property::value::Value;
 use crate::property::{Property, PropertyFactory, DynProperty, WrappedValue, Listener};
+use crate::property::value::{length::Length, brush::Brush};
 use crate::{println, eprintln};
 
 use super::AbiBuffer;
@@ -28,7 +30,7 @@ pub fn property_factory__new_factory() -> Abi<PropertyFactory> {
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property_factory__new_property__int(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<i64>> {
+pub fn property_factory__new_property__int(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<i32>> {
   let listener = if notify.is_null() { None } else {
     Some(Box::new(notify) as Box<dyn Listener>)
   };
@@ -42,7 +44,7 @@ pub fn property_factory__new_property__string(factory: Abi<PropertyFactory>, not
     Some(Box::new(notify) as Box<dyn Listener>)
   };
   let factory = factory.into_runtime_temporary();
-  Abi::into_abi(factory.string("", None))
+  Abi::into_abi(factory.string("", listener))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
@@ -51,7 +53,7 @@ pub fn property_factory__new_property__float(factory: Abi<PropertyFactory>, noti
     Some(Box::new(notify) as Box<dyn Listener>)
   };
   let factory = factory.into_runtime_temporary();
-  Abi::into_abi(factory.float(0, None))
+  Abi::into_abi(factory.float(0, listener))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
@@ -60,7 +62,25 @@ pub fn property_factory__new_property__boolean(factory: Abi<PropertyFactory>, no
     Some(Box::new(notify) as Box<dyn Listener>)
   };
   let factory = factory.into_runtime_temporary();
-  Abi::into_abi(factory.boolean(false, None))
+  Abi::into_abi(factory.boolean(false, listener))
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property_factory__new_property__length(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<Length>> {
+  let listener = if notify.is_null() { None } else {
+    Some(Box::new(notify) as Box<dyn Listener>)
+  };
+  let factory = factory.into_runtime_temporary();
+  Abi::into_abi(factory.length(Length::default(), listener))
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property_factory__new_property__brush(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<Brush>> {
+  let listener = if notify.is_null() { None } else {
+    Some(Box::new(notify) as Box<dyn Listener>)
+  };
+  let factory = factory.into_runtime_temporary();
+  Abi::into_abi(factory.brush(Brush::default(), listener))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
@@ -133,33 +153,33 @@ pub fn property__boolean__drop(property: Abi<Property<bool>>) {
 
 /*************************************************************************
  * 
- *                            Property<i64>
+ *                            Property<i32>
  * 
  *************************************************************************/
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property__int__get(property: Abi<Property<i64>>) -> i64 {
+pub fn property__int__get(property: Abi<Property<i32>>) -> i32 {
   property.into_runtime_temporary().get()
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property__int__freeze(property: Abi<Property<i64>>) {
+pub fn property__int__freeze(property: Abi<Property<i32>>) {
   property.into_runtime_temporary().freeze();
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property__int__set(property: Abi<Property<i64>>, value: i64, result: Abi<AbiResult>) {
+pub fn property__int__set(property: Abi<Property<i32>>, value: i32, result: Abi<AbiResult>) {
   if let Err(err) = property.into_runtime_temporary().try_set(value) {
     result.into_runtime_temporary().err(err);
   }
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property__int__weakref(property: Abi<Property<i64>>) -> Abi<Box<dyn DynProperty>> {
+pub fn property__int__weakref(property: Abi<Property<i32>>) -> Abi<Box<dyn DynProperty>> {
   Abi::into_abi(property.into_runtime_temporary().dynamic())
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property__int__bind(property: Abi<Property<i64>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
+pub fn property__int__bind(property: Abi<Property<i32>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
   let callback = move |q| {
     let value: Box<WrappedValue> = callback.dispatch_box(q);
     value.unwrap_int()
@@ -173,14 +193,14 @@ pub fn property__int__bind(property: Abi<Property<i64>>, parents: Abi<Vec<Box<dy
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property__int__unbind(property: Abi<Property<i64>>, result: Abi<AbiResult>) {
+pub fn property__int__unbind(property: Abi<Property<i32>>, result: Abi<AbiResult>) {
   if let Err(err) = property.into_runtime_temporary().try_unbind() {
     result.into_runtime_temporary().err(err);
   }
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property__int__drop(property: Abi<Property<i64>>) {
+pub fn property__int__drop(property: Abi<Property<i32>>) {
   mem::drop(property.into_runtime());
 }
 
@@ -293,6 +313,116 @@ pub fn property__string__drop(property: Abi<Property<String>>) {
 
 /*************************************************************************
  * 
+ *                            Property<Length>
+ * 
+ *************************************************************************/
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__length__get(property: Abi<Property<Length>>) -> Abi<Length> {
+  Abi::into_abi(property.into_runtime_temporary().get())
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__length__freeze(property: Abi<Property<Length>>) {
+  property.into_runtime_temporary().freeze();
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__length__set(property: Abi<Property<Length>>, value: Abi<Length>, result: Abi<AbiResult>) {
+  let value = value.into_runtime_temporary();
+  if let Err(err) = property.into_runtime_temporary().try_set(value.clone()) {
+    result.into_runtime_temporary().err(err);
+  }
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__length__weakref(property: Abi<Property<Length>>) -> Abi<Box<dyn DynProperty>> {
+  Abi::into_abi(property.into_runtime_temporary().dynamic())
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__length__bind(property: Abi<Property<Length>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
+  let callback = move |q| {
+    let value: Box<WrappedValue> = callback.dispatch_box(q);
+    value.unwrap_length()
+  };
+  
+  let property = property.into_runtime_temporary();
+
+  if let Err(err) = property.try_bind_dynamic(&parents.into_runtime_temporary(), callback) {
+    result.into_runtime_temporary().err(err);
+  }
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__length__unbind(property: Abi<Property<Length>>, result: Abi<AbiResult>) {
+  if let Err(err) = property.into_runtime_temporary().try_unbind() {
+    result.into_runtime_temporary().err(err);
+  }
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__length__drop(property: Abi<Property<Length>>) {
+  mem::drop(property.into_runtime());
+}
+
+/*************************************************************************
+ * 
+ *                            Property<Brush>
+ * 
+ *************************************************************************/
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__brush__get(property: Abi<Property<Brush>>) -> Abi<Brush> {
+  Abi::into_abi(property.into_runtime_temporary().get())
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__brush__freeze(property: Abi<Property<Brush>>) {
+  property.into_runtime_temporary().freeze();
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__brush__set(property: Abi<Property<Brush>>, value: Abi<Brush>, result: Abi<AbiResult>) {
+  let value = value.into_runtime_temporary();
+  if let Err(err) = property.into_runtime_temporary().try_set(value.clone()) {
+    result.into_runtime_temporary().err(err);
+  }
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__brush__weakref(property: Abi<Property<Brush>>) -> Abi<Box<dyn DynProperty>> {
+  Abi::into_abi(property.into_runtime_temporary().dynamic())
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__brush__bind(property: Abi<Property<Brush>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
+  let callback = move |q| {
+    let value: Box<WrappedValue> = callback.dispatch_box(q);
+    value.unwrap_brush()
+  };
+  
+  let property = property.into_runtime_temporary();
+
+  if let Err(err) = property.try_bind_dynamic(&parents.into_runtime_temporary(), callback) {
+    result.into_runtime_temporary().err(err);
+  }
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__brush__unbind(property: Abi<Property<Brush>>, result: Abi<AbiResult>) {
+  if let Err(err) = property.into_runtime_temporary().try_unbind() {
+    result.into_runtime_temporary().err(err);
+  }
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property__brush__drop(property: Abi<Property<Brush>>) {
+  mem::drop(property.into_runtime());
+}
+
+/*************************************************************************
+ * 
  *                  Box<dyn DynProperty> (PropertyWeakRef)
  * 
  *************************************************************************/
@@ -368,6 +498,100 @@ pub fn vec__wrapped_value__drop(vec: Abi<Vec<WrappedValue>>) {
 
 /*************************************************************************
  * 
+ *                               Length
+ * 
+ *************************************************************************/
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__px(value: f64) -> Abi<Length> {
+  Abi::into_abi(Length::Px(value))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__cm(value: f64) -> Abi<Length> {
+  Abi::into_abi(Length::Cm(value))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__in(value: f64) -> Abi<Length> {
+  Abi::into_abi(Length::In(value))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__html_vw(value: f64) -> Abi<Length> {
+  Abi::into_abi(Length::__HtmlVw(value))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__html_vh(value: f64) -> Abi<Length> {
+  Abi::into_abi(Length::__HtmlVh(value))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__add(lhs: Abi<Length>, rhs: Abi<Length>) -> Abi<Length> {
+  let lhs = lhs.into_runtime_temporary();
+  let rhs = rhs.into_runtime_temporary();
+  Abi::into_abi(lhs.clone() + rhs.clone())
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__sub(lhs: Abi<Length>, rhs: Abi<Length>) -> Abi<Length> {
+  let lhs = lhs.into_runtime_temporary();
+  let rhs = rhs.into_runtime_temporary();
+  Abi::into_abi(lhs.clone() - rhs.clone())
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__mul(lhs: Abi<Length>, rhs: f64) -> Abi<Length> {
+  let lhs = lhs.into_runtime_temporary();
+  Abi::into_abi(lhs.clone() * rhs)
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__div(lhs: Abi<Length>, rhs: f64) -> Abi<Length> {
+  let lhs = lhs.into_runtime_temporary();
+  Abi::into_abi(lhs.clone() / rhs)
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__neg(value: Abi<Length>) -> Abi<Length> {
+  let value = value.into_runtime_temporary();
+  Abi::into_abi(-value.clone())
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__to_string(length: Abi<Length>) -> Abi<AbiBuffer> {
+  Abi::into_abi(AbiBuffer::from_string(format!("{}", length.into_runtime_temporary())))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__drop(length: Abi<Length>) {
+  mem::drop(length.into_runtime())
+}
+
+/*************************************************************************
+ * 
+ *                                  Brush
+ * 
+ *************************************************************************/
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn brush__rgba(r: f64, g: f64, b: f64, a: f64) -> Abi<Brush> {
+  Abi::into_abi(Brush::Color(r, g, b, a))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn brush__to_string(brush: Abi<Brush>) -> Abi<AbiBuffer> {
+  Abi::into_abi(AbiBuffer::from_string(format!("{}", brush.into_runtime_temporary())))
+}
+ 
+#[no_mangle] #[allow(non_snake_case)]
+pub fn brush__drop(brush: Abi<Brush>) {
+  mem::drop(brush.into_runtime())
+}
+
+/*************************************************************************
+ * 
  *                             WrappedValue
  * 
  *************************************************************************/
@@ -391,12 +615,12 @@ fn wrapped_value__unwrap_float(value: Abi<WrappedValue>) -> f64 {
   value.into_runtime_temporary().unwrap_float()
 }
 #[no_mangle] #[allow(non_snake_case)]
-fn wrapped_value__wrap_int(value: i64) -> Abi<WrappedValue> {
+fn wrapped_value__wrap_int(value: i32) -> Abi<WrappedValue> {
   Abi::into_abi(WrappedValue::Int(value))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-fn wrapped_value__unwrap_int(value: Abi<WrappedValue>) -> i64 {
+fn wrapped_value__unwrap_int(value: Abi<WrappedValue>) -> i32 {
   value.into_runtime_temporary().unwrap_int()
 }
 
@@ -412,17 +636,43 @@ fn wrapped_value__unwrap_string(value: Abi<WrappedValue>) -> Abi<AbiBuffer> {
 }
 
 #[no_mangle] #[allow(non_snake_case)]
+fn wrapped_value__wrap_length(value: Abi<Length>) -> Abi<WrappedValue> {
+  let length = value.into_runtime_temporary().clone();
+  Abi::into_abi(WrappedValue::Length(length))
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+fn wrapped_value__unwrap_length(value: Abi<WrappedValue>) -> Abi<Length> {
+  Abi::into_abi(value.into_runtime_temporary().unwrap_length())
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+fn wrapped_value__wrap_brush(value: Abi<Brush>) -> Abi<WrappedValue> {
+  let brush = value.into_runtime_temporary().clone();
+  Abi::into_abi(WrappedValue::Brush(brush))
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+fn wrapped_value__unwrap_brush(value: Abi<WrappedValue>) -> Abi<Brush> {
+  Abi::into_abi(value.into_runtime_temporary().unwrap_brush())
+}
+
+#[no_mangle] #[allow(non_snake_case)]
 fn wrapped_value__tag(value: Abi<WrappedValue>) -> u32 {
   const BOOLEAN: u32 = 0;
   const INT: u32 = 1;
   const FLOAT: u32 = 2;
-  const STRING: u32 = 1;
+  const STRING: u32 = 3;
+  const LENGTH: u32 = 4;
+  const BRUSH: u32 = 5;
 
   match value.into_runtime_temporary() {
     WrappedValue::Int(_) => INT,
     WrappedValue::String(_) => STRING,
     WrappedValue::Boolean(_) => BOOLEAN,
     WrappedValue::Float(_) => FLOAT,
+    WrappedValue::Length(_) => LENGTH,
+    WrappedValue::Brush(_) => BRUSH,
   }
 }
 

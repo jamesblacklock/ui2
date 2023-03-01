@@ -2,6 +2,19 @@ use core::fmt;
 use std::rc::Rc;
 use crate::{println, eprintln};
 
+pub mod length;
+pub mod brush;
+
+use length::Length;
+use brush::Brush;
+
+// NOT IMPLEMENTED:
+// Brush
+// Component
+// LayoutEnum
+// Iter
+// List
+
 // any value that can be put into a Property must implement this trait
 // a `Value` has an associated `Item` type which is the actual type that is stored
 // the `Item` may be the same as the `Value`, or it may be a different
@@ -18,9 +31,11 @@ pub trait Value: fmt::Debug {
 #[derive(Debug, Clone)]
 pub enum WrappedValue {
 	Boolean(bool),
-	Int(i64),
+	Int(i32),
 	Float(f64),
 	String(Rc<String>),
+	Length(Length),
+	Brush(Brush),
 }
 
 impl WrappedValue {
@@ -30,7 +45,7 @@ impl WrappedValue {
 			_ => false,
 		}
 	}
-	pub fn unwrap_int(&self) -> i64 {
+	pub fn unwrap_int(&self) -> i32 {
 		match self {
 			WrappedValue::Int(int) => *int,
 			_ => 0,
@@ -46,6 +61,18 @@ impl WrappedValue {
 		match self {
 			WrappedValue::Float(float) => *float,
 			_ => 0.0,
+		}
+	}
+	pub fn unwrap_length(&self) -> Length {
+		match self {
+			WrappedValue::Length(length) => length.clone(),
+			_ => Length::default(),
+		}
+	}
+	pub fn unwrap_brush(&self) -> Brush {
+		match self {
+			WrappedValue::Brush(brush) => brush.clone(),
+			_ => Brush::default(),
 		}
 	}
 }
@@ -80,14 +107,14 @@ impl ValueItem for bool {
 	}
 }
 
-// the implementation of `Value` & `ValueItem` for `i64`
-impl Value for i64 {
-	type Item = i64;
+// the implementation of `Value` & `ValueItem` for `i32`
+impl Value for i32 {
+	type Item = i32;
 	fn default() -> Self { 0 }
 	fn item(value: Self) -> Self::Item { value }
 	fn wrapped(value: Self::Item) -> WrappedValue { WrappedValue::Int(value) }
 }
-impl ValueItem for i64 {
+impl ValueItem for i32 {
 	fn unwrapped(value: WrappedValue) -> Self {
 		value.unwrap_int()
 	}

@@ -8,5 +8,6 @@
     "allowJs": true,
     "moduleResolution": "node",
     "strict": true,
-  }
+  },
+  "include": ["index.ts"]
 }
