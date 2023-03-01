@@ -211,7 +211,9 @@ impl <V: Value, T: Values, F: Fn(T) -> V> ChildTransformTrait for ChildTransform
 		DynProperty::clone(&self.child)
 	}
 	fn update_value(&self) {
-		self.child.upgrade().unwrap().borrow_mut().value = V::item((self.transform)(self.values.borrow().clone()));
+		if let Some(child) = self.child.upgrade() {
+			child.borrow_mut().set_value(V::item((self.transform)(self.values.borrow().clone())));
+		}
 	}
 }
 
@@ -227,7 +229,7 @@ impl <V: Value + 'static, F: Fn(Vec<WrappedValue>) -> V> ChildTransformTrait for
 	}
 	fn update_value(&self) {
 		if let Some(child) = self.child.upgrade() {
-			child.borrow_mut().value = V::item((self.transform)(self.values.borrow().clone()));
+			child.borrow_mut().set_value(V::item((self.transform)(self.values.borrow().clone())));
 		}
 	}
 }

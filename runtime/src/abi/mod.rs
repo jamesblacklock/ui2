@@ -8,6 +8,8 @@ use crate::{println, eprintln};
 
 pub mod property;
 
+#[macro_export]
+#[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "runtime")]
 extern "C" {
 	fn __console_log(buf: Abi<AbiBuffer>, is_error: bool);
@@ -15,6 +17,16 @@ extern "C" {
   fn __drop_function(fnptr: usize);
 }
 
+#[cfg(not(target_arch = "wasm32"))] #[no_mangle]
+unsafe extern "C" fn __dispatch_function(fnptr: usize, argsptr: usize) -> usize {
+  let f: extern "C" fn(usize) -> usize = mem::transmute(fnptr);
+  f(argsptr)
+}
+
+#[cfg(not(target_arch = "wasm32"))] #[no_mangle]
+extern "C" fn __drop_function(fnptr: usize) {}
+
+#[cfg(target_arch = "wasm32")]
 pub fn console_log<S: Into<String>>(message: S, is_error: bool) {
   let buf = AbiBuffer::from_string(message.into());
   unsafe { __console_log(Abi::into_abi(buf), is_error); }
@@ -161,13 +173,22 @@ pub fn abi_result__drop(abi_result: Abi<AbiResult>) {
   mem::drop(abi_result.into_runtime())
 }
 
+#[derive(Debug)]
 pub struct AbiFunction(usize);
 
 impl AbiFunction {
-  pub fn dispatch<T: std::fmt::Debug, U>(&self, vec: Vec<T>) -> Box<U> {
+  pub fn dispatch_usize<T: std::fmt::Debug>(&self, vec: Vec<T>) -> usize {
     let args = Abi::into_abi(vec);
-    let result = unsafe { __dispatch_function(self.0, args.0) };
-    Abi::into_runtime(Abi(result, PhantomData))
+    unsafe { __dispatch_function(self.0, args.0) }
+  }
+  pub fn dispatch_box<T: std::fmt::Debug, U>(&self, vec: Vec<T>) -> Box<U> {
+    Abi::into_runtime(Abi(self.dispatch_usize(vec), PhantomData))
+  }
+  pub fn dispatch_void<T: std::fmt::Debug>(&self, vec: Vec<T>) {
+    self.dispatch_usize(vec);
+  }
+  pub fn is_null(&self) -> bool {
+    self.0 == 0
   }
 }
 

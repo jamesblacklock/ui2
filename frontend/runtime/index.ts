@@ -1,9 +1,9 @@
-import { loadRuntime } from '../../runtime/dist/runtime';
+import { loadRuntime } from '../../runtime/dist/runtime_wasm';
 
 type FinalizationData = { ptr: number; drop: (ptr: number) => void };
 
 interface PropertyMethodTable<Get = number, Set = Get> {
-  new: (ptr: number) => number;
+  new: (ptr: number, notify: number) => number;
   drop: (ptr: number) => void;
   get: (ptr: number) => Get;
   set: (ptr: number, value: Set, resptr: number) => void;
@@ -56,10 +56,10 @@ interface Abi {
   property_factory__commit_changes(ptr: number): number;
   property_factory__drop(ptr: number): void;
   property_factory__new_factory(): number;
-  property_factory__new_property__boolean(): number;
-  property_factory__new_property__float(): number;
-  property_factory__new_property__int(): number;
-  property_factory__new_property__string(): number;
+  property_factory__new_property__boolean(ptr: number, notify: number): number;
+  property_factory__new_property__float(ptr: number, notify: number): number;
+  property_factory__new_property__int(ptr: number, notify: number): number;
+  property_factory__new_property__string(ptr: number, notify: number): number;
   vec__weakref_property__drop(ptr: number): void;
   vec__weakref_property__get(ptr: number): number;
   vec__weakref_property__len(ptr: number): number;
@@ -105,7 +105,7 @@ const wasm_imports = {
 const WASM = await loadRuntime(wasm_imports);
 const ABI: Abi = WASM.instance.exports as unknown as Abi;
 
-const HEAP: Function[] = [];
+const HEAP: Function[] = [() => null];
 const FREE_HEAP: number[] = [];
 const DECODER = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
 const ENCODER = new TextEncoder();
@@ -248,21 +248,25 @@ export class PropertyFactory {
     this.ptr = ABI.property_factory__new_factory();
     FINALIZER.register(this, {ptr: this.ptr, drop: ABI.property_factory__drop});
   }
-  int() {
+  int(notify: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = INT_TABLE;
-    return Property.int(this, table.new.call(null, this.ptr), table);
+    return Property.int(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
-  string() {
+  string(notify: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = STRING_TABLE;
-    return Property.string(this, table.new.call(null, this.ptr), table);
+    return Property.string(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
-  float() {
+  float(notify: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = FLOAT_TABLE;
-    return Property.float(this, table.new.call(null, this.ptr), table);
+    return Property.float(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
-  boolean() {
+  boolean(notify: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
     let table = BOOLEAN_TABLE;
-    return Property.boolean(this, table.new.call(null, this.ptr), table);
+    return Property.boolean(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
   commitChanges() {
     if(this.commitChangesRequested === undefined) {

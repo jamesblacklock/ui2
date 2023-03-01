@@ -26,5 +26,4 @@ macro_rules! eprintln {
 
 pub mod property;
 
-#[cfg(target_arch = "wasm32")]
 pub mod abi;

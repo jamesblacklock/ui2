@@ -2,10 +2,19 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::{mem};
 use crate::abi::{Abi, AbiResult, AbiFunction};
-use crate::property::{Property, PropertyFactory, DynProperty, WrappedValue};
+use crate::property::{Property, PropertyFactory, DynProperty, WrappedValue, Listener};
 use crate::{println, eprintln};
 
 use super::AbiBuffer;
+
+impl Listener for AbiFunction {
+  fn notify(&self) {
+    self.dispatch_void(Vec::new() as Vec<()>)
+  }
+  fn fmt_debug(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    write!(f, "{:?}", self)
+  }
+}
 
 /*************************************************************************
  * 
@@ -19,27 +28,39 @@ pub fn property_factory__new_factory() -> Abi<PropertyFactory> {
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property_factory__new_property__int(factory: Abi<PropertyFactory>) -> Abi<Property<i64>> {
+pub fn property_factory__new_property__int(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<i64>> {
+  let listener = if notify.is_null() { None } else {
+    Some(Box::new(notify) as Box<dyn Listener>)
+  };
   let factory = factory.into_runtime_temporary();
-  Abi::into_abi(factory.int(0))
+  Abi::into_abi(factory.int(0, listener))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property_factory__new_property__string(factory: Abi<PropertyFactory>) -> Abi<Property<String>> {
+pub fn property_factory__new_property__string(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<String>> {
+  let listener = if notify.is_null() { None } else {
+    Some(Box::new(notify) as Box<dyn Listener>)
+  };
   let factory = factory.into_runtime_temporary();
-  Abi::into_abi(factory.string(""))
+  Abi::into_abi(factory.string("", None))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property_factory__new_property__float(factory: Abi<PropertyFactory>) -> Abi<Property<f64>> {
+pub fn property_factory__new_property__float(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<f64>> {
+  let listener = if notify.is_null() { None } else {
+    Some(Box::new(notify) as Box<dyn Listener>)
+  };
   let factory = factory.into_runtime_temporary();
-  Abi::into_abi(factory.float(0))
+  Abi::into_abi(factory.float(0, None))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
-pub fn property_factory__new_property__boolean(factory: Abi<PropertyFactory>) -> Abi<Property<bool>> {
+pub fn property_factory__new_property__boolean(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<bool>> {
+  let listener = if notify.is_null() { None } else {
+    Some(Box::new(notify) as Box<dyn Listener>)
+  };
   let factory = factory.into_runtime_temporary();
-  Abi::into_abi(factory.boolean(false))
+  Abi::into_abi(factory.boolean(false, None))
 }
 
 #[no_mangle] #[allow(non_snake_case)]
@@ -87,7 +108,7 @@ pub fn property__boolean__weakref(property: Abi<Property<bool>>) -> Abi<Box<dyn 
 #[no_mangle] #[allow(non_snake_case)]
 pub fn property__boolean__bind(property: Abi<Property<bool>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
   let callback = move |q| {
-    let value: Box<WrappedValue> = callback.dispatch(q);
+    let value: Box<WrappedValue> = callback.dispatch_box(q);
     value.unwrap_boolean()
   };
   
@@ -140,7 +161,7 @@ pub fn property__int__weakref(property: Abi<Property<i64>>) -> Abi<Box<dyn DynPr
 #[no_mangle] #[allow(non_snake_case)]
 pub fn property__int__bind(property: Abi<Property<i64>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
   let callback = move |q| {
-    let value: Box<WrappedValue> = callback.dispatch(q);
+    let value: Box<WrappedValue> = callback.dispatch_box(q);
     value.unwrap_int()
   };
   
@@ -193,7 +214,7 @@ pub fn property__float__weakref(property: Abi<Property<f64>>) -> Abi<Box<dyn Dyn
 #[no_mangle] #[allow(non_snake_case)]
 pub fn property__float__bind(property: Abi<Property<f64>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
   let callback = move |q| {
-    let value: Box<WrappedValue> = callback.dispatch(q);
+    let value: Box<WrappedValue> = callback.dispatch_box(q);
     value.unwrap_float()
   };
   
@@ -247,7 +268,7 @@ pub fn property__string__weakref(property: Abi<Property<String>>) -> Abi<Box<dyn
 #[no_mangle] #[allow(non_snake_case)]
 pub fn property__string__bind(property: Abi<Property<String>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
   let callback = move |q| {
-    let value: Box<WrappedValue> = callback.dispatch(q);
+    let value: Box<WrappedValue> = callback.dispatch_box(q);
     value.unwrap_string().deref().clone()
   };
   

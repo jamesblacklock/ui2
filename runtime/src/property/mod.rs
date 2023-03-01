@@ -1,7 +1,6 @@
 // MISSING FEATURES FROM ORIGINAL API:
 // - transitions
 // - optional interpolation on `get()` using `transitionStartTime` and `prevValue`
-// - `notify` & `onChange`
 
 mod value;
 mod transform;
@@ -36,33 +35,37 @@ impl PropertyFactory {
 		})))
 	}
 
-	pub fn new<V: Value>(&self) -> Property<V> {
+	pub fn new<V: Value>(&self, listener: Option<Box<dyn Listener>>) -> Property<V> {
 		let value = V::item(V::default());
-		Property::new(Rc::downgrade(&self.0), value)
+		Property::new(Rc::downgrade(&self.0), value, listener)
 	}
 
-	pub fn int<I: Into<i64>>(&self, value: I) -> Property<i64> {
+	pub fn int<I: Into<i64>>(&self, value: I, listener: Option<Box<dyn Listener>>) -> Property<i64> {
 		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value)
+		Property::new(Rc::downgrade(&self.0), value, listener)
 	}
 
-	pub fn string<S: Into<String>>(&self, value: S) -> Property<String> {
+	pub fn string<S: Into<String>>(&self, value: S, listener: Option<Box<dyn Listener>>) -> Property<String> {
 		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value)
+		Property::new(Rc::downgrade(&self.0), value, listener)
 	}
 
-	pub fn boolean<B: Into<bool>>(&self, value: B) -> Property<bool> {
+	pub fn boolean<B: Into<bool>>(&self, value: B, listener: Option<Box<dyn Listener>>) -> Property<bool> {
 		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value)
+		Property::new(Rc::downgrade(&self.0), value, listener)
 	}
 
-	pub fn float<F: Into<f64>>(&self, value: F) -> Property<f64> {
+	pub fn float<F: Into<f64>>(&self, value: F, listener: Option<Box<dyn Listener>>) -> Property<f64> {
 		let value = Value::item(value.into());
-		Property::new(Rc::downgrade(&self.0), value)
+		Property::new(Rc::downgrade(&self.0), value, listener)
 	}
 
-	pub fn bind<V: Value, P: Parents, T: Fn(P::Values) -> V + 'static>(&self, parents: P, transform: T) -> Property<V> {
-		let p = Property::new(Rc::downgrade(&self.0), V::item(V::default()));
+	pub fn bind<
+		V: Value,
+		P: Parents,
+		T: Fn(P::Values) -> V + 'static
+	>(&self, parents: P, transform: T, listener: Option<Box<dyn Listener>>) -> Property<V> {
+		let p = Property::new(Rc::downgrade(&self.0), V::item(V::default()), listener);
 		p.bind(parents, transform);
 		p
 	}
@@ -89,6 +92,19 @@ type PropertyCell<V> = RefCell<PropertyImpl<V>>;
 
 pub struct Property<V: Value + 'static>(Rc<PropertyCell<V>>);
 
+pub trait Listener {
+	fn notify(&self);
+	fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "<Listener>")
+	}
+}
+
+impl fmt::Debug for Box<dyn Listener> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		self.fmt_debug(f)
+	}
+}
+
 #[derive(Debug)]
 pub struct PropertyImpl<V: Value + 'static> {
 	value: V::Item,
@@ -96,6 +112,21 @@ pub struct PropertyImpl<V: Value + 'static> {
 	transform: Option<Rc<dyn ChildTransformTrait>>,
 	children: Vec<(Weak<dyn ChildTransformTrait>, usize)>,
 	factory: Weak<RefCell<PropertyFactoryImpl>>,
+	listener: Option<Box<dyn Listener>>,
+}
+
+impl <V: Value> PropertyImpl<V> {
+	fn set_value(&mut self, value: V::Item) -> bool {
+		if self.value != value {
+			self.value = value;
+			if let Some(listener) = &self.listener {
+				listener.notify();
+			}
+			true
+		} else {
+			false
+		}
+	}
 }
 
 pub trait DynProperty {
@@ -183,9 +214,10 @@ impl <V: Value> Property<V> {
 	pub fn try_set<U: Into<V>>(&self, value: U) -> Result<(), String> {
 		self.check_is_settable(false)?;
 		let mut self_impl = self.get_impl();
-		self_impl.value = V::item(value.into());
-		let factory = self_impl.factory.upgrade();
-		factory.unwrap().borrow_mut().change_set.insert(self.dynamic());
+		if self_impl.set_value(V::item(value.into())) {
+			let factory = self_impl.factory.upgrade();
+			factory.unwrap().borrow_mut().change_set.insert(self.dynamic());
+		}
 		Ok(())
 	}
 
@@ -203,6 +235,9 @@ impl <V: Value> Property<V> {
 		self.get_impl().transform = Some(transform.clone());
 		transform.update_value();
 		parents.add_child(Rc::downgrade(&transform));
+
+		let factory = self.get_impl().factory.upgrade();
+		factory.unwrap().borrow_mut().change_set.insert(self.dynamic());
 		Ok(())
 	}
 
@@ -230,7 +265,10 @@ impl <V: Value> Property<V> {
 		self.check_is_settable(true)?;
 		let mut self_impl = self.get_impl();
 		self_impl.transform = None;
-		self_impl.value = V::item(V::default());
+		if self_impl.set_value(V::item(V::default())) {
+			let factory = self_impl.factory.upgrade();
+			factory.unwrap().borrow_mut().change_set.insert(self.dynamic());
+		}
 		Ok(())
 	}
 
@@ -262,7 +300,7 @@ impl <V: Value> Property<V> {
 		self_impl.children.push((transform, index))
 	}
 
-	fn new(factory: Weak<RefCell<PropertyFactoryImpl>>, value: V::Item) -> Self {
+	fn new(factory: Weak<RefCell<PropertyFactoryImpl>>, value: V::Item, listener: Option<Box<dyn Listener>>) -> Self {
 		factory.upgrade().unwrap().borrow_mut().count += 1;
 		Property(Rc::new(RefCell::new(PropertyImpl {
 			value,
@@ -270,6 +308,7 @@ impl <V: Value> Property<V> {
 			transform: None,
 			children: Vec::new(),
 			factory,
+			listener,
 		})))
 	}
 }
@@ -291,4 +330,36 @@ impl <V: Value> Drop for Property<V> {
 				}
 			}
 	}
+}
+
+#[test]
+fn tests() {
+	let factory = PropertyFactory::new_factory();
+	let a = factory.int(7, None);
+	let b = factory.bind((&a,), |(a,)| a == 7, None);
+
+	assert!(a.get() == 7);
+	assert!(b.get() == true);
+
+	let c = factory.string("a", None);
+	a.bind((&c,), |(c,)| (c.as_bytes()[0] - 91) as _);
+
+	assert!(a.get() == 6);     // `bind()` sets the value immediately
+	assert!(b.get() == true);  // children are not updated yet
+	assert!(&*c.get() == "a");
+
+	factory.commit_changes();
+
+	assert!(a.get() == 6);     // nothing changed here
+	assert!(b.get() == false); // `b` was added to the `change_set` and updated
+	assert!(&*c.get() == "a");
+
+	let d = factory.string("B", None);
+	c.bind((&d,), |(d,)| d.to_lowercase());
+	factory.commit_changes();
+
+	assert!(a.get() == 7);     // "B".to_lowercase() => "b" - 91 => 7
+	assert!(b.get() == true);  // a == 7
+	assert!(&*c.get() == "b"); // "B".to_lowercase()
+	assert!(&*d.get() == "B");
 }

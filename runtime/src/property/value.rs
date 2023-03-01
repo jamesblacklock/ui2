@@ -50,7 +50,7 @@ impl WrappedValue {
 	}
 }
 
-pub trait ValueItem: Clone + fmt::Debug {
+pub trait ValueItem: Clone + fmt::Debug + PartialEq {
 	fn unwrapped(value: WrappedValue) -> Self;
 }
 
