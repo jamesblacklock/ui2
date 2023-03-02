@@ -1,4 +1,4 @@
-use core::fmt;
+use std::fmt;
 use std::cell::RefCell;
 use std::rc::Weak;
 use super::{Property, DynProperty, PropertyCell};

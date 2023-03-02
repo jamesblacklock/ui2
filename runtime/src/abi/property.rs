@@ -1,6 +1,6 @@
 use std::ops::Deref;
 use std::rc::Rc;
-use std::{mem};
+use std::{mem, fmt};
 use crate::abi::{Abi, AbiResult, AbiFunction, IntoRuntime, IntoAbi};
 use crate::property::{
   Property,
@@ -8,7 +8,14 @@ use crate::property::{
   DynProperty,
   WrappedValue,
   Listener,
-  value::{Value, ValueItem, length::Length, brush::Brush, layout::Layout},
+  value::{
+    Value,
+    ValueItem,
+    length::Length,
+    brush::Brush,
+    layout::Layout,
+    iter::{Iter, Iterable},
+  },
 };
 use crate::{println, eprintln};
 
@@ -18,7 +25,7 @@ impl Listener for AbiFunction {
   fn notify(&self) {
     self.dispatch_void(Vec::new() as Vec<()>)
   }
-  fn fmt_debug(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+  fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "{:?}", self)
   }
 }
@@ -36,7 +43,6 @@ macro_rules! define_property_type {
   (
     $prop_type:ty,
     $abi_type:ty,
-    $wrapped_enum:ident,
     $property_factory_new:ident,
     $property_get:ident,
     $property_set:ident,
@@ -93,7 +99,7 @@ macro_rules! define_property_type {
     #[no_mangle] #[allow(non_snake_case)]
     fn $value_wrap(value: $abi_type) -> Abi<WrappedValue> {
       let value = IntoRuntime::into_runtime(value);
-      Abi::into_abi(WrappedValue::$wrapped_enum(Value::item(value)))
+      Abi::into_abi(<$prop_type as Value>::wrapped(<$prop_type as Value>::item(value)))
     }
     #[no_mangle] #[allow(non_snake_case)]
     fn $value_unwrap(value: Abi<WrappedValue>) -> $abi_type {
@@ -165,7 +171,6 @@ define_drop! { PropertyFactory, property_factory__drop }
 define_property_type! {
   bool,
   bool,
-  Boolean,
   property_factory__new_property__boolean,
   property__boolean__get,
   property__boolean__set,
@@ -181,7 +186,6 @@ define_property_type! {
 define_property_type! {
   i32,
   i32,
-  Int,
   property_factory__new_property__int,
   property__int__get,
   property__int__set,
@@ -197,7 +201,6 @@ define_property_type! {
 define_property_type! {
   f64,
   f64,
-  Float,
   property_factory__new_property__float,
   property__float__get,
   property__float__set,
@@ -213,7 +216,6 @@ define_property_type! {
 define_property_type! {
   String,
   Abi<AbiBuffer>,
-  String,
   property_factory__new_property__string,
   property__string__get,
   property__string__set,
@@ -229,7 +231,6 @@ define_property_type! {
 define_property_type! {
   Length,
   Abi<Length>,
-  Length,
   property_factory__new_property__length,
   property__length__get,
   property__length__set,
@@ -245,7 +246,6 @@ define_property_type! {
 define_property_type! {
   Brush,
   Abi<Brush>,
-  Brush,
   property_factory__new_property__brush,
   property__brush__get,
   property__brush__set,
@@ -275,7 +275,6 @@ impl IntoRuntime<Layout> for u8 {
 define_property_type! {
   Layout,
   u8,
-  EnumLayout,
   property_factory__new_property__enum_layout,
   property__enum_layout__get,
   property__enum_layout__set,
@@ -286,6 +285,21 @@ define_property_type! {
   property__enum_layout__drop,
   wrapped_value__wrap_enum_layout,
   wrapped_value__unwrap_enum_layout,
+}
+
+define_property_type! {
+  Iter<i32>,
+  Abi<Iter<i32>>,
+  property_factory__new_property__iter,
+  property__iter__get,
+  property__iter__set,
+  property__iter__freeze,
+  property__iter__weakref,
+  property__iter__bind,
+  property__iter__unbind,
+  property__iter__drop,
+  wrapped_value__wrap_iter,
+  wrapped_value__unwrap_iter,
 }
 
 /*************************************************************************
@@ -410,6 +424,34 @@ define_drop! { Brush, brush__drop }
 
 /*************************************************************************
  * 
+ *                                Iter
+ * 
+ *************************************************************************/
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn iter__from_int(value: i32) -> Abi<Iter<i32>> {
+  Abi::into_abi(value.iter())
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn iter__next(iter: Abi<Iter<i32>>) -> Abi<WrappedValue> {
+  let item = iter.into_runtime_temporary().next_wrapped();
+  if let Some(item) = item {
+    Abi::into_abi(item)
+  } else {
+    Abi::null()
+  }
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn iter__to_string(iter: Abi<Iter<i32>>) -> Abi<AbiBuffer> {
+  Abi::into_abi(AbiBuffer::from_string(format!("{:?}", iter.into_runtime_temporary())))
+}
+ 
+define_drop! { Iter<i32>, iter__drop }
+
+/*************************************************************************
+ * 
  *                             WrappedValue
  * 
  *************************************************************************/
@@ -423,6 +465,7 @@ fn wrapped_value__tag(value: Abi<WrappedValue>) -> u32 {
   const LENGTH: u32 = 4;
   const BRUSH: u32 = 5;
   const ENUM_LAYOUT: u32 = 6;
+  const ITER: u32 = 7;
 
   match value.into_runtime_temporary() {
     WrappedValue::Int(_) => INT,
@@ -432,6 +475,7 @@ fn wrapped_value__tag(value: Abi<WrappedValue>) -> u32 {
     WrappedValue::Length(_) => LENGTH,
     WrappedValue::Brush(_) => BRUSH,
     WrappedValue::EnumLayout(_) => ENUM_LAYOUT,
+    WrappedValue::Iter(_) => ITER,
   }
 }
 

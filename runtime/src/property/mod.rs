@@ -5,8 +5,7 @@
 pub mod value;
 mod transform;
 
-use core::fmt;
-use std::{rc::{Rc, Weak}, cell::{RefCell, RefMut}, mem, collections::HashSet, hash::Hash, ptr};
+use std::{rc::{Rc, Weak}, cell::{RefCell, RefMut}, fmt, mem, collections::HashSet, hash::Hash, ptr, ops};
 
 use transform::{ChildTransformTrait, ChildTransform, Parents};
 
@@ -35,7 +34,7 @@ impl PropertyFactory {
 		})))
 	}
 
-	pub fn new<V: Value, W: ToValue<V>>(&self, value: W, listener: Option<Box<dyn Listener>>) -> Property<V> {
+	pub fn new<V: Value, W: ToValue<Value=V>>(&self, value: W, listener: Option<Box<dyn Listener>>) -> Property<V> {
 		Property::new(Rc::downgrade(&self.0), V::item(value.to_value()), listener)
 	}
 
@@ -122,9 +121,9 @@ impl Hash for Box<dyn DynProperty> {
 	}
 }
 impl PartialEq for Box<dyn DynProperty> {
-	fn eq(&self, other: &Self) -> bool {
-    let left: *const dyn DynProperty = self.as_ref();
-    let right: *const dyn DynProperty = other.as_ref();
+	fn eq(&self, rhs: &Self) -> bool {
+    let left: *const _ = self.as_ref();
+    let right: *const _ = rhs.as_ref();
     left == right
 	}
 }

@@ -1,7 +1,7 @@
 use std::{
 	alloc::{alloc, dealloc, Layout},
 	mem,
-	marker::PhantomData, ptr, rc::Rc, ops::Deref,
+	marker::PhantomData, ptr, rc::Rc, ops::Deref, fmt,
 };
 
 use crate::{println, eprintln};
@@ -36,6 +36,10 @@ pub fn console_log<S: Into<String>>(message: S, is_error: bool) {
 pub struct Abi<T>(usize, PhantomData<T>);
 
 impl <T> Abi<T> {
+  fn null() -> Abi<T> {
+    Abi(0, PhantomData)
+  }
+
   fn into_abi(object: T) -> Abi<T> {
     unsafe { Abi(mem::transmute(Box::leak(Box::new(object))), PhantomData) }
   }
@@ -163,37 +167,49 @@ pub fn abi_buffer__drop(abi_buffer: Abi<AbiBuffer>) {
   mem::drop(abi_buffer.into_runtime())
 }
 
-pub struct AbiResult(Box<Option<String>>);
+pub struct AbiResult<T = (), E = String>(Box<Result<T, E>>);
 
-impl AbiResult {
-  pub fn new() -> Self {
-    AbiResult(Box::new(None))
+impl <T: Default, E> AbiResult<T, E> {
+  pub fn new(value: T) -> Self {
+    AbiResult(Box::new(Ok(value)))
   }
 
-  pub fn ok(&mut self) {
-    self.0 = Box::new(None);
+  pub fn ok(&mut self, value: T) {
+    self.0 = Box::new(Ok(value));
   }
 
-  pub fn err<S: Into<String>>(&mut self, message: S) {
-    self.0 = Box::new(Some(message.into()));
+  pub fn err<Q: Into<E>>(&mut self, err: Q) {
+    self.0 = Box::new(Err(err.into()));
   }
 
   pub fn is_ok(&self) -> bool {
-    self.0.is_none()
+    self.0.is_ok()
   }
 
   pub fn is_err(&self) -> bool {
-    self.0.is_some()
+    self.0.is_err()
   }
+}
 
+impl AbiResult<(), String> {
   pub fn message(&self) -> String {
-    self.0.clone().unwrap_or_default()
+    if self.0.is_err() {
+      self.0.clone().unwrap_err()
+    } else {
+      String::new()
+    }
+  }
+}
+
+impl <T: Default, E> Default for AbiResult<T, E> {
+  fn default() -> Self {
+    AbiResult::new(Default::default())
   }
 }
 
 #[no_mangle] #[allow(non_snake_case)]
 pub fn abi_result__new() -> Abi<AbiResult> {
-  Abi::into_abi(AbiResult::new())
+  Abi::into_abi(AbiResult::default())
 }
 
 #[no_mangle] #[allow(non_snake_case)]
@@ -221,15 +237,15 @@ pub fn abi_result__drop(abi_result: Abi<AbiResult>) {
 pub struct AbiFunction(usize);
 
 impl AbiFunction {
-  pub fn dispatch_usize<T: std::fmt::Debug>(&self, vec: Vec<T>) -> usize {
+  pub fn dispatch_usize<T: fmt::Debug>(&self, vec: Vec<T>) -> usize {
     let args = Abi::into_abi(vec);
     unsafe { __dispatch_function(self.0, args.0) }
   }
-  pub fn dispatch_box<T: std::fmt::Debug, U: Clone + 'static>(&self, vec: Vec<T>) -> U {
+  pub fn dispatch_box<T: fmt::Debug, U: Clone + 'static>(&self, vec: Vec<T>) -> U {
     let value: &mut U = Abi::into_runtime_temporary(Abi(self.dispatch_usize(vec), PhantomData));
     value.clone()
   }
-  pub fn dispatch_void<T: std::fmt::Debug>(&self, vec: Vec<T>) {
+  pub fn dispatch_void<T: fmt::Debug>(&self, vec: Vec<T>) {
     self.dispatch_usize(vec);
   }
   pub fn is_null(&self) -> bool {

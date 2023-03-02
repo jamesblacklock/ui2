@@ -1,14 +1,16 @@
-use core::fmt;
-use std::{rc::Rc, ops::Deref};
+use std::{fmt, rc::Rc, ops::Deref};
 use crate::{println, eprintln};
 
 pub mod length;
 pub mod brush;
 pub mod layout;
+pub mod iter;
 
 use length::Length;
 use brush::Brush;
 use layout::Layout;
+
+use self::iter::{Iter, WrappedIter, Iterable};
 
 // NOT IMPLEMENTED:
 // Component
@@ -27,15 +29,18 @@ pub trait Value: fmt::Debug {
 	fn wrapped(value: Self::Item) -> WrappedValue;
 }
 
-pub trait ToValue<T: Value> {
-	fn to_value(self) -> T;
+pub trait ToValue {
+	type Value: Value;
+	fn to_value(self) -> Self::Value;
 }
 
-impl <T: Value> ToValue<T> for T {
+impl <T: Value> ToValue for T {
+	type Value = Self;
 	fn to_value(self) -> T { self }
 }
 
-impl ToValue<String> for &'static str {
+impl ToValue for &'static str {
+	type Value = String;
 	fn to_value(self) -> String { self.to_owned() }
 }
 
@@ -50,35 +55,48 @@ pub enum WrappedValue {
 	Length(Length),
 	Brush(Brush),
 	EnumLayout(Layout),
+	Iter(WrappedIter),
 }
 
 impl WrappedValue {
 	pub fn unwrap_boolean(&self) -> bool {
 		match self {
 			WrappedValue::Boolean(boolean) => *boolean,
+			WrappedValue::Float(float) => *float != 0.0,
+			WrappedValue::Int(int) => *int != 0,
 			_ => false,
 		}
 	}
 	pub fn unwrap_int(&self) -> i32 {
 		match self {
+			WrappedValue::Boolean(boolean) => *boolean as i32,
+			WrappedValue::Float(float) => *float as i32,
 			WrappedValue::Int(int) => *int,
 			_ => 0,
 		}
 	}
 	pub fn unwrap_string(&self) -> Rc<String> {
 		match self {
+			WrappedValue::Boolean(boolean) => boolean.to_string().into(),
+			WrappedValue::Float(float) => float.to_string().into(),
+			WrappedValue::Int(int) => int.to_string().into(),
 			WrappedValue::String(string) => string.clone(),
 			_ => Rc::new(String::new()),
 		}
 	}
 	pub fn unwrap_float(&self) -> f64 {
 		match self {
+			WrappedValue::Boolean(boolean) => *boolean as i32 as f64,
 			WrappedValue::Float(float) => *float,
+			WrappedValue::Int(int) => *int as f64,
 			_ => 0.0,
 		}
 	}
 	pub fn unwrap_length(&self) -> Length {
 		match self {
+			WrappedValue::Boolean(boolean) => Length::Px(*boolean as i32 as f64),
+			WrappedValue::Float(float) => Length::Px(*float as f64),
+			WrappedValue::Int(int) => Length::Px(*int as f64),
 			WrappedValue::Length(length) => length.clone(),
 			_ => Length::default(),
 		}
@@ -93,6 +111,12 @@ impl WrappedValue {
 		match self {
 			WrappedValue::EnumLayout(layout) => *layout,
 			_ => Layout::default(),
+		}
+	}
+	pub fn unwrap_iter<V: Value>(&self) -> Iter<V> {
+		match self {
+			WrappedValue::Iter(iter) => iter.clone().iter(),
+			_ => Iter::empty(),
 		}
 	}
 }

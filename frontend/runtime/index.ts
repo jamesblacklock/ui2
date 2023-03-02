@@ -2,11 +2,11 @@ import { loadRuntime } from '../../runtime/dist/runtime_wasm';
 
 type FinalizationData = { ptr: number; drop: (ptr: number) => void };
 
-interface PropertyMethodTable<Get = number, Set = Get> {
+interface PropertyMethodTable<V = number> {
   new: (ptr: number, notify: number) => number;
   drop: (ptr: number) => void;
-  get: (ptr: number) => Get;
-  set: (ptr: number, value: Set, resptr: number) => void;
+  get: (ptr: number) => V;
+  set: (ptr: number, value: V, resptr: number) => void;
   weakref: (ptr: number) => number;
   freeze: (ptr: number) => void;
   bind: (ptr: number, parents: number, transform: number, resptr: number) => void;
@@ -73,6 +73,13 @@ interface Abi {
   property__enum_layout__set: PropertyMethodTable['set'];
   property__enum_layout__unbind: PropertyMethodTable['unbind'];
   property__enum_layout__weakref: PropertyMethodTable['weakref'];
+  property__iter__bind: PropertyMethodTable['bind'];
+  property__iter__drop: PropertyMethodTable['drop'];
+  property__iter__freeze: PropertyMethodTable['freeze'];
+  property__iter__get: PropertyMethodTable['get'];
+  property__iter__set: PropertyMethodTable['set'];
+  property__iter__unbind: PropertyMethodTable['unbind'];
+  property__iter__weakref: PropertyMethodTable['weakref'];
   property__weakref__drop(ptr: number): void;
   property_factory__commit_changes(ptr: number): number;
   property_factory__drop(ptr: number): void;
@@ -84,6 +91,7 @@ interface Abi {
   property_factory__new_property__length(ptr: number, notify: number): number;
   property_factory__new_property__brush(ptr: number, notify: number): number;
   property_factory__new_property__enum_layout(ptr: number, notify: number): number;
+  property_factory__new_property__iter(ptr: number, notify: number): number;
   vec__weakref_property__drop(ptr: number): void;
   vec__weakref_property__get(ptr: number): number;
   vec__weakref_property__len(ptr: number): number;
@@ -125,6 +133,10 @@ interface Abi {
   brush__rgba(r: number, g: number, b: number, a: number): number;
   brush__to_string(ptr: number): number;
   brush__drop(ptr: number): void;
+  iter__from_int(value: number): number;
+  iter__to_string(ptr: number): number;
+  iter__next(ptr: number): number
+  iter__drop(ptr: number): void;
 }
 
 const wasm_imports = {
@@ -265,8 +277,7 @@ const STRING_TABLE: PropertyMethodTable<string> = {
   unbind: ABI.property__string__unbind,
 };
 const FLOAT_TABLE: PropertyMethodTable<number> = {
-  new: ABI.property_factory__new_property__float,
-  drop: ABI.property__float__drop,
+  new: ABI.property_factory__new_property__float,  drop: ABI.property__float__drop,
   get: ABI.property__float__get,
   set: ABI.property__float__set,
   weakref: ABI.property__float__weakref,
@@ -275,8 +286,7 @@ const FLOAT_TABLE: PropertyMethodTable<number> = {
   unbind: ABI.property__float__unbind,
 };
 const BOOLEAN_TABLE: PropertyMethodTable<boolean> = {
-  new: ABI.property_factory__new_property__boolean,
-  drop: ABI.property__boolean__drop,
+  new: ABI.property_factory__new_property__boolean,  drop: ABI.property__boolean__drop,
   get: ptr => ABI.property__boolean__get(ptr) != 0,
   set: (ptr, value, resptr) => ABI.property__boolean__set(ptr, Number(value), resptr),
   weakref: ABI.property__boolean__weakref,
@@ -285,8 +295,7 @@ const BOOLEAN_TABLE: PropertyMethodTable<boolean> = {
   unbind: ABI.property__boolean__unbind,
 };
 const LENGTH_TABLE: PropertyMethodTable<Length> = {
-  new: ABI.property_factory__new_property__length,
-  drop: ABI.property__length__drop,
+  new: ABI.property_factory__new_property__length,  drop: ABI.property__length__drop,
   get: ptr => Length.__fromRuntimePtr(ABI.property__length__get(ptr)),
   set: (ptr, value, resptr) => ABI.property__length__set(ptr, value.ptr, resptr),
   weakref: ABI.property__length__weakref,
@@ -295,8 +304,7 @@ const LENGTH_TABLE: PropertyMethodTable<Length> = {
   unbind: ABI.property__length__unbind,
 };
 const BRUSH_TABLE: PropertyMethodTable<Brush> = {
-  new: ABI.property_factory__new_property__brush,
-  drop: ABI.property__brush__drop,
+  new: ABI.property_factory__new_property__brush,  drop: ABI.property__brush__drop,
   get: ptr => Brush.__fromRuntimePtr(ABI.property__brush__get(ptr)),
   set: (ptr, value, resptr) => ABI.property__brush__set(ptr, value.ptr, resptr),
   weakref: ABI.property__brush__weakref,
@@ -305,14 +313,22 @@ const BRUSH_TABLE: PropertyMethodTable<Brush> = {
   unbind: ABI.property__brush__unbind,
 };
 const ENUM_LAYOUT_TABLE: PropertyMethodTable<Enum.Layout> = {
-  new: ABI.property_factory__new_property__enum_layout,
-  drop: ABI.property__enum_layout__drop,
+  new: ABI.property_factory__new_property__enum_layout,  drop: ABI.property__enum_layout__drop,
   get: ptr => Enum.Layout.__fromInt(ABI.property__enum_layout__get(ptr)),
   set: (ptr, value, resptr) => ABI.property__enum_layout__set(ptr, value.value, resptr),
   weakref: ABI.property__enum_layout__weakref,
   freeze: ABI.property__enum_layout__freeze,
   bind: ABI.property__enum_layout__bind,
   unbind: ABI.property__enum_layout__unbind,
+};
+const ITER_TABLE: PropertyMethodTable<Iter> = {
+  new: ABI.property_factory__new_property__iter,  drop: ABI.property__iter__drop,
+  get: ptr => Iter.__fromRuntimePtr(ABI.property__iter__get(ptr)),
+  set: (ptr, value, resptr) => ABI.property__iter__set(ptr, value.ptr, resptr),
+  weakref: ABI.property__iter__weakref,
+  freeze: ABI.property__iter__freeze,
+  bind: ABI.property__iter__bind,
+  unbind: ABI.property__iter__unbind,
 };
 
 class PropertyFactoryClass {
@@ -358,6 +374,11 @@ class PropertyFactoryClass {
     let table = ENUM_LAYOUT_TABLE;
     return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
   }
+  iter(notify?: () => unknown) {
+    let notifyPtr = notify ? addToHeap(notify) : 0;
+    let table = ITER_TABLE;
+    return new Property(this, table.new.call(null, this.ptr, notifyPtr), table);
+  }
   commitChanges() {
     if(this.commitChangesRequested === undefined) {
       this.commitChangesRequested = requestAnimationFrame(() => {
@@ -376,7 +397,7 @@ export type Transformer<P, V> = (values: PropertyValues<P>) => V;
 export class Property<V = any> {
   private result: AbiResult;
 
-  constructor(private factory: PropertyFactoryClass, private ptr: number, private table: PropertyMethodTable<V, V>) {
+  constructor(private factory: PropertyFactoryClass, private ptr: number, private table: PropertyMethodTable<V>) {
     this.result = AbiResult.new();
     FINALIZER.register(this, { ptr: this.ptr, drop: table.drop });
   }
@@ -402,7 +423,7 @@ export class Property<V = any> {
     }
     const wrapperFn = (argsptr: number) => {
       const args = ValueVec.fromRuntimePtr(argsptr);
-      const values = args.toArray().map(e => e.unwrap());
+      const values = args.toArray();
       let result = fn(values as unknown as PropertyValues<P>);
       const wrapped = WrappedValue.wrap(result as string | number).ptr;
       return wrapped;
@@ -435,6 +456,7 @@ type VecConfig<Get, Push> = {
   fpush: (ptr: number, itemptr: number) => void;
   ftoptr: (item: Push) => number;
   ffromptr: (ptr: number) => Get;
+  drop: (ptr: number) => void;
 };
 
 type VecClass<Get, Push> = typeof Vec<Get, Push>;
@@ -443,17 +465,15 @@ class Vec<Get, Push> {
   static _new<Get, Push>(
     vecClass: VecClass<Get, Push>,
     config: VecConfig<Get, Push>,
-    drop: (ptr: number) => void,
   ) {
-    return new vecClass(config, undefined, drop);
+    return new vecClass(config, undefined);
   }
   static _fromRuntimePtr<Get, Push>(
     vecClass: VecClass<Get, Push>,
     config: VecConfig<Get, Push>,
     ptr: number,
-    drop: (ptr: number) => void,
   ) {
-    return new vecClass(config, ptr, drop);
+    return new vecClass(config, ptr);
   }
 
   readonly ptr: number;
@@ -463,8 +483,8 @@ class Vec<Get, Push> {
   private ftoptr: (item: Push) => number;
   private ffromptr: (ptr: number) => Get;
 
-  constructor(config: VecConfig<Get, Push>, ptr: number|undefined, drop: (ptr: number) => void) {
-    const { fnew, fget, fpush, flen, ftoptr, ffromptr } = config;
+  constructor(config: VecConfig<Get, Push>, ptr: number|undefined) {
+    const { fnew, fget, fpush, flen, ftoptr, ffromptr, drop } = config;
     this.ptr = ptr ?? fnew();
     this.fget = fget;
     this.flen = flen;
@@ -503,8 +523,9 @@ class PropertyVec extends Vec<PropertyWeakRef, Property<any>> {
       flen: ABI.vec__weakref_property__len,
       ftoptr: (property: Property<any>) => property.weakref().ptr,
       ffromptr: (ptr: number) => PropertyWeakRef.fromRuntimePtr(ptr),
+      drop: ABI.vec__weakref_property__drop,
     }
-    return Vec._new(this, config, ABI.vec__weakref_property__drop);
+    return Vec._new(this, config);
   }
 }
 
@@ -515,10 +536,12 @@ const STRING = 3;
 const LENGTH = 4;
 const BRUSH = 5;
 const ENUM_LAYOUT = 6;
+const ITER = 7;
+
+type Value = number | string | Length | Brush | Enum.Layout;
 
 class WrappedValue {
-
-  static wrap(value: number|string|Length|Brush) {
+  static wrap(value: Value) {
     let ptr;
     if(typeof value === 'number') {
       if(Math.abs(value) === value) {
@@ -532,6 +555,8 @@ class WrappedValue {
       ptr = ABI.wrapped_value__wrap_length(value.ptr);
     } else if(value instanceof Brush) {
       ptr = ABI.wrapped_value__wrap_brush(value.ptr);
+    } else if(value instanceof Enum.Layout) {
+      ptr = ABI.wrapped_value__wrap_enum_layout(value.value);
     } else {
       throw new Error('unimplemented');
     }
@@ -546,22 +571,23 @@ class WrappedValue {
   }
   unwrap() {
     const tag = this.tag();
-    if(tag === INT) {
-      return ABI.wrapped_value__unwrap_int(this.ptr);
-    } else if(tag === BOOLEAN) {
-      return ABI.wrapped_value__unwrap_boolean(this.ptr) != 0;
-    } else if(tag === FLOAT) {
-      return ABI.wrapped_value__unwrap_float(this.ptr);
-    } else if(tag === STRING) {
-      return AbiBuffer.fromRuntimePtr(ABI.wrapped_value__unwrap_string(this.ptr)).toString();
-    } else if(tag === LENGTH) {
-      return Length.__fromRuntimePtr(ABI.wrapped_value__unwrap_length(this.ptr));
-    } else if(tag === BRUSH) {
-      return Brush.__fromRuntimePtr(ABI.wrapped_value__unwrap_brush(this.ptr));
-    } else if(tag === ENUM_LAYOUT) {
-      return Enum.Layout.__fromInt(ABI.wrapped_value__unwrap_enum_layout(this.ptr));
-    } else {
-      throw new Error('unimplemented');
+    switch(tag) {
+      case INT:
+        return ABI.wrapped_value__unwrap_int(this.ptr);
+      case BOOLEAN:
+        return ABI.wrapped_value__unwrap_boolean(this.ptr) != 0;
+      case FLOAT:
+        return ABI.wrapped_value__unwrap_float(this.ptr);
+      case STRING:
+        return AbiBuffer.fromRuntimePtr(ABI.wrapped_value__unwrap_string(this.ptr)).toString();
+      case LENGTH:
+        return Length.__fromRuntimePtr(ABI.wrapped_value__unwrap_length(this.ptr));
+      case BRUSH:
+        return Brush.__fromRuntimePtr(ABI.wrapped_value__unwrap_brush(this.ptr));
+      case ENUM_LAYOUT:
+        return Enum.Layout.__fromInt(ABI.wrapped_value__unwrap_enum_layout(this.ptr));
+      default:
+        throw new Error('unimplemented');
     }
   }
   tag() {
@@ -569,17 +595,21 @@ class WrappedValue {
   }
 }
 
-class ValueVec extends Vec<WrappedValue, string|number> {
+export class ValueVec extends Vec<Value, Value> {
+  static CONFIG = {
+    fnew: ABI.vec__wrapped_value__new,
+    fpush: ABI.vec__wrapped_value__push,
+    fget: ABI.vec__wrapped_value__get,
+    flen: ABI.vec__wrapped_value__len,
+    ftoptr: (e: Value) => WrappedValue.wrap(e).ptr,
+    ffromptr: (ptr: number) => WrappedValue.fromRuntimePtr(ptr).unwrap(),
+    drop: ABI.vec__wrapped_value__drop,
+  }
   static fromRuntimePtr(ptr: number) {
-    const config = {
-      fnew: ABI.vec__wrapped_value__new,
-      fpush: ABI.vec__wrapped_value__push,
-      fget: ABI.vec__wrapped_value__get,
-      flen: ABI.vec__wrapped_value__len,
-      ftoptr: (e: string|number) => WrappedValue.wrap(e).ptr,
-      ffromptr: (ptr: number) => WrappedValue.fromRuntimePtr(ptr)
-    }
-    return Vec._fromRuntimePtr(this, config, ptr, ABI.vec__wrapped_value__drop);
+    return Vec._fromRuntimePtr(this, ValueVec.CONFIG, ptr);
+  }
+  static new() {
+    return Vec._new(this, ValueVec.CONFIG);
   }
 }
 
@@ -676,6 +706,32 @@ export namespace Enum {
     }
     toString() {
       return this === Layout.Column ? '.column' : '.row';
+    }
+  }
+}
+
+export class Iter {
+  static fromInt(value: number) {
+    return new Iter(ABI.iter__from_int(value));
+  }
+  static __fromRuntimePtr(ptr: number) {
+    return new Iter(ptr);
+  }
+
+  constructor(readonly ptr: number) {
+    FINALIZER.register(this, {ptr: this.ptr, drop: ABI.iter__drop});
+  }
+
+  toString() {
+    return AbiBuffer.fromRuntimePtr(ABI.iter__to_string(this.ptr)).toString();
+  }
+  
+  *[Symbol.iterator]() {
+    let ptr = ABI.iter__next(this.ptr);
+    while(ptr !== 0) {
+      const value = WrappedValue.fromRuntimePtr(ptr);
+      yield value.unwrap();
+      ptr = ABI.iter__next(this.ptr);
     }
   }
 }
