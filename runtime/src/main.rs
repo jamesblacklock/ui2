@@ -7,15 +7,18 @@ use runtime::println;
 
 struct Listener<T: fmt::Debug>(T);
 
-impl <T: fmt::Debug + 'static> Listener<T> {
+impl <T: fmt::Debug + Clone + 'static> Listener<T> {
 	fn from(value: T) -> Option<Box<dyn property::Listener>> {
 		Some(Box::new(Listener(value)))
 	}
 }
 
-impl <T: fmt::Debug> property::Listener for Listener<T> {
+impl <T: fmt::Debug + Clone + 'static> property::Listener for Listener<T> {
 	fn notify(&self) {
 		println!("value changed: {:?}", self.0);
+	}
+	fn clone(&self) -> Box<dyn property::Listener> {
+		Box::new(Listener(self.0.clone()))
 	}
 }
 

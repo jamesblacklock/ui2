@@ -15,6 +15,7 @@ extern "C" {
 	fn __console_log(buf: Abi<AbiBuffer>, is_error: bool);
   fn __dispatch_function(fnptr: usize, argsptr: usize) -> usize;
   fn __drop_function(fnptr: usize);
+  fn __random() -> f64;
 }
 
 #[cfg(not(target_arch = "wasm32"))] #[no_mangle]
@@ -30,6 +31,11 @@ extern "C" fn __drop_function(fnptr: usize) {}
 pub fn console_log<S: Into<String>>(message: S, is_error: bool) {
   let buf = AbiBuffer::from_string(message.into());
   unsafe { __console_log(Abi::into_abi(buf), is_error); }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn random() -> f64 {
+  unsafe { __random() }
 }
 
 #[repr(transparent)]
@@ -241,9 +247,14 @@ impl AbiFunction {
     let args = Abi::into_abi(vec);
     unsafe { __dispatch_function(self.0, args.0) }
   }
-  pub fn dispatch_box<T: fmt::Debug, U: Clone + 'static>(&self, vec: Vec<T>) -> U {
-    let value: &mut U = Abi::into_runtime_temporary(Abi(self.dispatch_usize(vec), PhantomData));
-    value.clone()
+  pub fn dispatch_box<T: fmt::Debug, U: Clone + 'static>(&self, vec: Vec<T>) -> Option<U> {
+    let p = self.dispatch_usize(vec);
+    if p == 0 {
+      None
+    } else {
+      let value: &mut U = Abi::into_runtime_temporary(Abi(p, PhantomData));
+      Some(value.clone())
+    }
   }
   pub fn dispatch_void<T: fmt::Debug>(&self, vec: Vec<T>) {
     self.dispatch_usize(vec);

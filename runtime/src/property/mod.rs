@@ -5,7 +5,16 @@
 pub mod value;
 mod transform;
 
-use std::{rc::{Rc, Weak}, cell::{RefCell, RefMut}, fmt, mem, collections::HashSet, hash::Hash, ptr, ops};
+use std::{
+	rc::{Rc, Weak},
+	cell::{RefCell, RefMut},
+	fmt,
+	mem,
+	collections::HashSet,
+	hash::Hash,
+	ptr,
+	ops::Deref
+};
 
 use transform::{ChildTransformTrait, ChildTransform, Parents};
 
@@ -23,13 +32,21 @@ pub struct PropertyFactory(Rc<RefCell<PropertyFactoryImpl>>);
 #[derive(Debug)]
 pub struct PropertyFactoryImpl {
 	count: usize,
+	count_all: usize,
 	change_set: HashSet<Box<dyn DynProperty>>,
+}
+
+impl PropertyFactoryImpl {
+	fn add_to_change_set(&mut self, prop: Box<dyn DynProperty>) {
+		self.change_set.insert(prop);
+	}
 }
 
 impl PropertyFactory {
 	pub fn new_factory() -> Self {
 		PropertyFactory(Rc::new(RefCell::new(PropertyFactoryImpl {
 			count: 0,
+			count_all: 0,
 			change_set: HashSet::new(),
 		})))
 	}
@@ -49,11 +66,18 @@ impl PropertyFactory {
 	}
 
 	pub fn commit_changes(&self) {
+		let mut listeners = Vec::new();
 		while self.0.borrow().change_set.len() > 0 {
 			let change_set = mem::replace(&mut self.0.borrow_mut().change_set, HashSet::new());
 			for prop in change_set {
 				prop.commit_changes();
+				if let Some(listener) = prop.listener() {
+					listeners.push(listener);
+				}
 			}
+		}
+		for listener in listeners {
+			listener.notify()
 		}
 	}
 
@@ -75,6 +99,7 @@ pub trait Listener {
 	fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "<Listener>")
 	}
+	fn clone(&self) -> Box<dyn Listener>;
 }
 
 impl fmt::Debug for Box<dyn Listener> {
@@ -91,15 +116,13 @@ pub struct PropertyImpl<V: Value + 'static> {
 	children: Vec<(Weak<dyn ChildTransformTrait>, usize)>,
 	factory: Weak<RefCell<PropertyFactoryImpl>>,
 	listener: Option<Box<dyn Listener>>,
+	id: usize,
 }
 
 impl <V: Value> PropertyImpl<V> {
 	fn set_value(&mut self, value: V::Item) -> bool {
 		if self.value != value {
 			self.value = value;
-			if let Some(listener) = &self.listener {
-				listener.notify();
-			}
 			true
 		} else {
 			false
@@ -113,18 +136,18 @@ pub trait DynProperty {
 	fn clone(&self) -> Box<dyn DynProperty>;
 	fn get_wrapped_value(&self) -> WrappedValue;
 	fn add_child(&self, transform: Weak<dyn ChildTransformTrait>, index: usize);
+	fn id(&self) -> usize;
+	fn listener(&self) -> Option<Box<dyn Listener>>;
 }
 
 impl Hash for Box<dyn DynProperty> {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		ptr::hash(self, state)
+		self.id().hash(state)
 	}
 }
 impl PartialEq for Box<dyn DynProperty> {
 	fn eq(&self, rhs: &Self) -> bool {
-    let left: *const _ = self.as_ref();
-    let right: *const _ = rhs.as_ref();
-    left == right
+    self.id() == rhs.id()
 	}
 }
 impl Eq for Box<dyn DynProperty> {}
@@ -157,7 +180,7 @@ impl <V: Value> DynProperty for Weak<RefCell<PropertyImpl<V>>> {
 				if let Some(transform) = transform.upgrade() {
 					transform.parent_value_changed(V::wrapped(value.clone()), index);
 					new_children.push((Rc::downgrade(&transform), index));
-					cell.borrow().factory.upgrade().unwrap().borrow_mut().change_set.insert(transform.get_child());
+					cell.borrow().factory.upgrade().unwrap().borrow_mut().add_to_change_set(transform.get_child());
 				}
 			}
 			cell.borrow_mut().children = new_children;
@@ -178,6 +201,17 @@ impl <V: Value> DynProperty for Weak<RefCell<PropertyImpl<V>>> {
 			cell.borrow_mut().children.push((transform, index))
 		}
 	}
+	fn id(&self) -> usize {
+		self.upgrade().unwrap().borrow().id
+	}
+	fn listener(&self) -> Option<Box<dyn Listener>> {
+		if let Some(cell) = self.upgrade() {
+			if let Some(listener) = &cell.borrow().listener {
+				return Some(listener.deref().clone());
+			}
+		}
+		None
+	}
 }
 
 impl <V: Value> Property<V> {
@@ -194,7 +228,8 @@ impl <V: Value> Property<V> {
 		let mut self_impl = self.get_impl();
 		if self_impl.set_value(V::item(value.into())) {
 			let factory = self_impl.factory.upgrade();
-			factory.unwrap().borrow_mut().change_set.insert(self.dynamic());
+			mem::drop(self_impl);
+			factory.unwrap().borrow_mut().add_to_change_set(self.dynamic());
 		}
 		Ok(())
 	}
@@ -215,7 +250,7 @@ impl <V: Value> Property<V> {
 		parents.add_child(Rc::downgrade(&transform));
 
 		let factory = self.get_impl().factory.upgrade();
-		factory.unwrap().borrow_mut().change_set.insert(self.dynamic());
+		factory.unwrap().borrow_mut().add_to_change_set(self.dynamic());
 		Ok(())
 	}
 
@@ -245,7 +280,8 @@ impl <V: Value> Property<V> {
 		self_impl.transform = None;
 		if self_impl.set_value(V::item(V::default())) {
 			let factory = self_impl.factory.upgrade();
-			factory.unwrap().borrow_mut().change_set.insert(self.dynamic());
+			mem::drop(self_impl);
+			factory.unwrap().borrow_mut().add_to_change_set(self.dynamic());
 		}
 		Ok(())
 	}
@@ -279,7 +315,13 @@ impl <V: Value> Property<V> {
 	}
 
 	fn new(factory: Weak<RefCell<PropertyFactoryImpl>>, value: V::Item, listener: Option<Box<dyn Listener>>) -> Self {
-		factory.upgrade().unwrap().borrow_mut().count += 1;
+		let factory_borrow = factory.upgrade().unwrap();
+		let mut factory_borrow = factory_borrow.borrow_mut();
+		factory_borrow.count += 1;
+		factory_borrow.count_all += 1;
+		let count_all = factory_borrow.count_all;
+		mem::drop(factory_borrow);
+
 		Property(Rc::new(RefCell::new(PropertyImpl {
 			value,
 			readonly: false,
@@ -287,6 +329,7 @@ impl <V: Value> Property<V> {
 			children: Vec::new(),
 			factory,
 			listener,
+			id: count_all,
 		})))
 	}
 }
@@ -299,14 +342,14 @@ impl <V: Value> fmt::Debug for Property<V> {
 
 impl <V: Value> Drop for Property<V> {
 	fn drop(&mut self) {
-			let self_impl = self.get_impl();
-			self_impl.factory.upgrade().unwrap().borrow_mut().count -= 1;
-			for (transform, index) in &self_impl.children {
-				if let Some(transform) = transform.upgrade() {
-					transform.parent_value_changed(V::wrapped(V::item(V::default())), *index);
-					self_impl.factory.upgrade().unwrap().borrow_mut().change_set.insert(transform.get_child());
-				}
+		let self_impl = self.get_impl();
+		self_impl.factory.upgrade().unwrap().borrow_mut().count -= 1;
+		for (transform, index) in &self_impl.children {
+			if let Some(transform) = transform.upgrade() {
+				transform.parent_value_changed(V::wrapped(V::item(V::default())), *index);
+				self_impl.factory.upgrade().unwrap().borrow_mut().add_to_change_set(transform.get_child());
 			}
+		}
 	}
 }
 

@@ -21,12 +21,15 @@ use crate::{println, eprintln};
 
 use super::AbiBuffer;
 
-impl Listener for AbiFunction {
+impl Listener for Rc<AbiFunction> {
   fn notify(&self) {
     self.dispatch_void(Vec::new() as Vec<()>)
   }
   fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "{:?}", self)
+  }
+  fn clone(&self) -> Box<dyn Listener> {
+    Box::new(Clone::clone(self))
   }
 }
 
@@ -57,7 +60,7 @@ macro_rules! define_property_type {
     #[no_mangle] #[allow(non_snake_case)]
     pub fn $property_factory_new(factory: Abi<PropertyFactory>, notify: AbiFunction) -> Abi<Property<$prop_type>> {
       let listener = if notify.is_null() { None } else {
-        Some(Box::new(notify) as Box<dyn Listener>)
+        Some(Box::new(Rc::new(notify)) as Box<dyn Listener>)
       };
       let factory = factory.into_runtime_temporary();
       Abi::into_abi(factory.new(<$prop_type as Value>::default(), listener))
@@ -83,7 +86,13 @@ macro_rules! define_property_type {
     }
     #[no_mangle] #[allow(non_snake_case)]
     pub fn $property_bind(property: Abi<Property<$prop_type>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
-      let callback = move |q| Value::from_item(ValueItem::unwrapped(callback.dispatch_box(q)));
+      let callback = move |q| {
+        if let Some(value) = callback.dispatch_box(q) {
+          Value::from_item(ValueItem::unwrapped(value))
+        } else {
+          Value::default()
+        }
+      };
       let property = property.into_runtime_temporary();
     
       if let Err(err) = property.try_bind_dynamic(&parents.into_runtime_temporary(), callback) {
@@ -401,6 +410,11 @@ pub fn length__neg(value: Abi<Length>) -> Abi<Length> {
 pub fn length__to_string(length: Abi<Length>) -> Abi<AbiBuffer> {
   Abi::into_abi(AbiBuffer::from_string(format!("{}", length.into_runtime_temporary())))
 }
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn length__to_css(length: Abi<Length>) -> Abi<AbiBuffer> {
+  Abi::into_abi(AbiBuffer::from_string(length.into_runtime_temporary().__to_css()))
+}
  
 define_drop! { Length, length__drop }
 
@@ -418,6 +432,11 @@ pub fn brush__rgba(r: f64, g: f64, b: f64, a: f64) -> Abi<Brush> {
 #[no_mangle] #[allow(non_snake_case)]
 pub fn brush__to_string(brush: Abi<Brush>) -> Abi<AbiBuffer> {
   Abi::into_abi(AbiBuffer::from_string(format!("{}", brush.into_runtime_temporary())))
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn brush__to_css(brush: Abi<Brush>) -> Abi<AbiBuffer> {
+  Abi::into_abi(AbiBuffer::from_string(brush.into_runtime_temporary().__to_css()))
 }
  
 define_drop! { Brush, brush__drop }

@@ -117,6 +117,8 @@ interface Abi {
   wrapped_value__unwrap_brush(ptr: number): number;
   wrapped_value__wrap_enum_layout(ptr: number): number;
   wrapped_value__unwrap_enum_layout(ptr: number): number;
+  wrapped_value__wrap_iter(ptr: number): number;
+  wrapped_value__unwrap_iter(ptr: number): number;
   wrapped_value__drop(ptr: number): void;
   length__px(value: number): number;
   length__cm(value: number): number;
@@ -129,9 +131,11 @@ interface Abi {
   length__div(ptr: number, value: number): number;
   length__neg(ptr: number): number;
   length__to_string(ptr: number): number;
+  length__to_css(ptr: number): number;
   length__drop(ptr: number): void;
   brush__rgba(r: number, g: number, b: number, a: number): number;
   brush__to_string(ptr: number): number;
+  brush__to_css(ptr: number): number;
   brush__drop(ptr: number): void;
   iter__from_int(value: number): number;
   iter__to_string(ptr: number): number;
@@ -143,19 +147,26 @@ const wasm_imports = {
   runtime: {
     __dispatch_function(ptr: number, args: number) {
       const fn = getHeapObject(ptr);
-      return fn(args);
+      if(!(fn instanceof Function)) {
+        console.error('tried to dispatch non-function!', ptr, fn);
+        return 0;
+      }
+      return fn?.(args);
     },
     __drop_function(ptr: number) {
       dropFromHeap(ptr);
     },
     __console_log(ptr: number, isError: 0|1) {
-      const message = AbiBuffer.fromRuntimePtr(ptr).toString();
+      const message = AbiBuffer.fromRuntimePtrToString(ptr);
       if(isError) {
         console.error(message);
       } else {
         console.log(message);
       }
     },
+    __random() {
+      return Math.random();
+    }
   },
 };
 
@@ -195,6 +206,12 @@ class AbiBuffer {
   static fromRuntimePtr(ptr: number) {
     return new AbiBuffer(ptr);
   }
+  static fromRuntimePtrToString(ptr: number) {
+    const buf = new AbiBuffer(ptr, undefined, false);
+    const string = buf.toString();
+    ABI.abi_buffer__drop(buf.ptr);
+    return string;
+  }
   static fromString(string: string) {
     return new AbiBuffer(undefined, string);
   }
@@ -203,7 +220,7 @@ class AbiBuffer {
   readonly len: number;
   private buf: number;
 
-  constructor(ptr: number|undefined, string?: string) {
+  constructor(ptr: number|undefined, string?: string, finalize = true) {
     if(ptr) {
       this.ptr = ptr;
       this.buf = ABI.abi_buffer__ptr(this.ptr);
@@ -217,7 +234,9 @@ class AbiBuffer {
       const buffer = new Uint8Array(ABI.memory.buffer).subarray(this.buf, this.buf + encoded.length);
       buffer.set(encoded);
     }
-    FINALIZER.register(this, {ptr: this.ptr, drop: ABI.abi_buffer__drop});
+    if(finalize) {
+      FINALIZER.register(this, {ptr: this.ptr, drop: ABI.abi_buffer__drop});
+    }
   }
   toString() {
     if(this.len === 0) {
@@ -246,8 +265,7 @@ class AbiResult {
     return !!ABI.abi_result__is_err(this.ptr);
   }
   get message() {
-    let buf = AbiBuffer.fromRuntimePtr(ABI.abi_result__message(this.ptr));
-    return buf.toString();
+    return AbiBuffer.fromRuntimePtrToString(ABI.abi_result__message(this.ptr));
   }
   verify() {
     if(this.isErr()) {
@@ -269,7 +287,7 @@ const INT_TABLE: PropertyMethodTable<number> = {
 const STRING_TABLE: PropertyMethodTable<string> = {
   new: ABI.property_factory__new_property__string,
   drop: ABI.property__string__drop,
-  get: ptr => AbiBuffer.fromRuntimePtr(ABI.property__string__get(ptr)).toString(),
+  get: ptr => AbiBuffer.fromRuntimePtrToString(ABI.property__string__get(ptr)),
   set: (ptr, value, resptr) => ABI.property__string__set(ptr, AbiBuffer.fromString(value).ptr, resptr),
   weakref: ABI.property__string__weakref,
   freeze: ABI.property__string__freeze,
@@ -412,6 +430,7 @@ export class Property<V = any> {
   }
   freeze() {
     this.table.freeze.call(null, this.ptr);
+    return this;
   }
   weakref() {
     return PropertyWeakRef.fromRuntimePtr(this.table.weakref.call(null, this.ptr));
@@ -434,6 +453,7 @@ export class Property<V = any> {
   }
   unbind() {
     this.table.unbind.call(null, this.ptr);
+    return this;
   }
   toString() {
     return `Property(${String(this.get())})`;
@@ -538,7 +558,7 @@ const BRUSH = 5;
 const ENUM_LAYOUT = 6;
 const ITER = 7;
 
-type Value = number | string | Length | Brush | Enum.Layout;
+export type Value = number | string | boolean | Length | Brush | Enum.Layout | Iter;
 
 class WrappedValue {
   static wrap(value: Value) {
@@ -549,6 +569,8 @@ class WrappedValue {
       } else {
         ptr = ABI.wrapped_value__wrap_float(value);
       }
+    } else if(typeof value === 'boolean') {
+      ptr = ABI.wrapped_value__wrap_boolean(value ? 1 : 0);
     } else if(typeof value === 'string') {
       ptr = ABI.wrapped_value__wrap_string(AbiBuffer.fromString(value).ptr);
     } else if(value instanceof Length) {
@@ -557,6 +579,8 @@ class WrappedValue {
       ptr = ABI.wrapped_value__wrap_brush(value.ptr);
     } else if(value instanceof Enum.Layout) {
       ptr = ABI.wrapped_value__wrap_enum_layout(value.value);
+    } else if(value instanceof Iter) {
+      ptr = ABI.wrapped_value__wrap_iter(value.ptr);
     } else {
       throw new Error('unimplemented');
     }
@@ -569,7 +593,7 @@ class WrappedValue {
   constructor(readonly ptr: number) {
     FINALIZER.register(this, {ptr: this.ptr, drop: ABI.wrapped_value__drop});
   }
-  unwrap() {
+  unwrap(): Value {
     const tag = this.tag();
     switch(tag) {
       case INT:
@@ -579,13 +603,15 @@ class WrappedValue {
       case FLOAT:
         return ABI.wrapped_value__unwrap_float(this.ptr);
       case STRING:
-        return AbiBuffer.fromRuntimePtr(ABI.wrapped_value__unwrap_string(this.ptr)).toString();
+        return AbiBuffer.fromRuntimePtrToString(ABI.wrapped_value__unwrap_string(this.ptr));
       case LENGTH:
         return Length.__fromRuntimePtr(ABI.wrapped_value__unwrap_length(this.ptr));
       case BRUSH:
         return Brush.__fromRuntimePtr(ABI.wrapped_value__unwrap_brush(this.ptr));
       case ENUM_LAYOUT:
         return Enum.Layout.__fromInt(ABI.wrapped_value__unwrap_enum_layout(this.ptr));
+      case ITER:
+        return Iter.__fromRuntimePtr(ABI.wrapped_value__unwrap_iter(this.ptr));
       default:
         throw new Error('unimplemented');
     }
@@ -659,10 +685,13 @@ export class Length {
     return new Length(ABI.length__neg(this.ptr));
   }
   toString() {
-    return AbiBuffer.fromRuntimePtr(ABI.length__to_string(this.ptr)).toString();
+    return AbiBuffer.fromRuntimePtrToString(ABI.length__to_string(this.ptr));
   }
   valueOf() {
     return this.toString();
+  }
+  toCss() {
+    return AbiBuffer.fromRuntimePtrToString(ABI.length__to_css(this.ptr));
   }
 }
 
@@ -685,10 +714,13 @@ export class Brush {
     FINALIZER.register(this, {ptr: this.ptr, drop: ABI.brush__drop});
   }
   toString() {
-    return AbiBuffer.fromRuntimePtr(ABI.brush__to_string(this.ptr)).toString();
+    return AbiBuffer.fromRuntimePtrToString(ABI.brush__to_string(this.ptr));
   }
   valueOf() {
     return this.toString();
+  }
+  toCss() {
+    return AbiBuffer.fromRuntimePtrToString(ABI.brush__to_css(this.ptr));
   }
 }
 
@@ -723,7 +755,7 @@ export class Iter {
   }
 
   toString() {
-    return AbiBuffer.fromRuntimePtr(ABI.iter__to_string(this.ptr)).toString();
+    return AbiBuffer.fromRuntimePtrToString(ABI.iter__to_string(this.ptr));
   }
   
   *[Symbol.iterator]() {

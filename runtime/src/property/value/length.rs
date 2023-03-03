@@ -31,6 +31,30 @@ impl Length {
       _ => None,
     }
   }
+
+  fn __to_css_impl(&self, top: bool) -> String {
+    let css = match self {
+      Length::Px(value) => return format!("{}px", value),
+      Length::Cm(value) => return format!("{}cm", value),
+      Length::In(value) => return format!("{}in", value),
+      Length::__HtmlVh(value) => return format!("{}vh", value * 100.0),
+      Length::__HtmlVw(value) => return format!("{}vw", value * 100.0),
+      Length::Add(op1, op2) => format!("({} + {})", op1.__to_css_impl(false), op2.__to_css_impl(false)),
+      Length::Mul(op1, op2) => format!("({} * {})", op1.__to_css_impl(false), op2),
+      Length::Sub(op1, op2) => format!("({} - {})", op1.__to_css_impl(false), op2.__to_css_impl(false)),
+      Length::Div(op1, op2) => format!("({} / {})", op1.__to_css_impl(false), op2),
+    };
+  
+    if top {
+      format!("calc({css})")
+    } else {
+      css
+    }
+  }
+
+  pub fn __to_css(&self) -> String {
+    self.__to_css_impl(true)
+  }
 }
 
 impl Value for Length {

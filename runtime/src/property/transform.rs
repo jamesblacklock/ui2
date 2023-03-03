@@ -212,7 +212,8 @@ impl <V: Value, T: Values, F: Fn(T) -> V> ChildTransformTrait for ChildTransform
 	}
 	fn update_value(&self) {
 		if let Some(child) = self.child.upgrade() {
-			child.borrow_mut().set_value(V::item((self.transform)(self.values.borrow().clone())));
+			let value = V::item((self.transform)(self.values.borrow().clone()));
+			child.borrow_mut().set_value(value);
 		}
 	}
 }
@@ -229,7 +230,8 @@ impl <V: Value + 'static, F: Fn(Vec<WrappedValue>) -> V> ChildTransformTrait for
 	}
 	fn update_value(&self) {
 		if let Some(child) = self.child.upgrade() {
-			child.borrow_mut().set_value(V::item((self.transform)(self.values.borrow().clone())));
+			let value = V::item((self.transform)(self.values.borrow().clone()));
+			child.borrow_mut().set_value(value);
 		}
 	}
 }

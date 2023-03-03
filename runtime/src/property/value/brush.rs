@@ -8,8 +8,19 @@ pub enum Brush {
 }
 
 impl Brush {
-  fn transparent() -> Self {
+  pub fn transparent() -> Self {
     Brush::Color(0.0, 0.0, 0.0, 0.0)
+  }
+  pub fn __to_css(&self) -> String {
+    match self {
+      Brush::Color(r, g, b, a) => {
+        let r = r * 255.0;
+        let g = g * 255.0;
+        let b = b * 255.0;
+        let a = a * 255.0;
+        format!("rgba({r}, {g}, {b}, {a})")
+      },
+    }
   }
 }
 
