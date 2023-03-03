@@ -28,7 +28,7 @@ Rect {
 
   Text if (q) { content: "This is some text."; }
   
-  @children
+  // @children
   
   "This is some more text."
 

@@ -9,22 +9,28 @@ use crate::{Type, checker::Content, ExprValue, Ctx, chk::CheckedExpr};
 
 use super::checker::{Component, Element};
 
-fn type_to_js(prop_type: &Type, in_type_position: bool) -> String {
+fn type_to_js(prop_type: &Type) -> String {
 	match prop_type {
-		Type::Int => "Dom.Int".to_owned(),
-		Type::Float => "Dom.Float".to_owned(),
+		Type::Int => "number".to_owned(),
+		Type::Float => "number".to_owned(),
 		Type::Length => "Dom.Length".to_owned(),
 		Type::Brush => "Dom.Brush".to_owned(),
-		Type::String => "Dom.String".to_owned(),
-		Type::Boolean => "Dom.Boolean".to_owned(),
-		Type::Iter(item_type) => {
-			let item_type = type_to_js(item_type, in_type_position);
-			if in_type_position {
-				format!("Dom.Collection<{}>", item_type)
-			} else {
-				format!("Dom.Iter.of({})", item_type)
-			}
-		},
+		Type::String => "string".to_owned(),
+		Type::Boolean => "boolean".to_owned(),
+		Type::Iter(_) => "Dom.Iter".to_owned(),
+		_ => unimplemented!(),
+	}
+}
+
+fn type_to_prop_method(prop_type: &Type) -> String {
+	match prop_type {
+		Type::Int => "int".to_owned(),
+		Type::Float => "float".to_owned(),
+		Type::Length => "length".to_owned(),
+		Type::Brush => "brush".to_owned(),
+		Type::String => "string".to_owned(),
+		Type::Boolean => "boolean".to_owned(),
+		Type::Iter(_item_type) => "iter".to_owned(),
 		_ => unimplemented!(),
 	}
 }
@@ -33,7 +39,7 @@ fn type_to_js(prop_type: &Type, in_type_position: bool) -> String {
 enum StaticValue {
 	Px(f64),
 	Float(f64),
-	Int(i64),
+	Int(i32),
 	Color(f64, f64, f64, f64),
 	String(String),
 	Boolean(bool),
@@ -49,55 +55,8 @@ impl fmt::Debug for BuiltinFunction {
 	}
 }
 
-impl ExprValue {
-	fn try_into_static(&self) -> Option<StaticValue> {
-		match self {
-			ExprValue::Px(value) => Some(StaticValue::Px(*value)),
-			ExprValue::Float(value) => Some(StaticValue::Float(*value)),
-			ExprValue::Int(value) => Some(StaticValue::Int(*value)),
-			ExprValue::Color(r,g,b,a) => Some(StaticValue::Color(*r,*g,*b,*a)),
-			ExprValue::String(value) => Some(StaticValue::String(value.clone())),
-			ExprValue::Boolean(value) => Some(StaticValue::Boolean(*value)),
-			ExprValue::Object(..) => unimplemented!(),
-			ExprValue::Path(..) => None,
-			ExprValue::Coerce(..) => None,
-			ExprValue::Enum(..) => None,
-			ExprValue::FunctionCall(expr, args) => {
-				let expr = expr.value.try_into_static();
-				let args: Vec<_> = args.iter().map(|e| e.value.try_into_static()).collect();
-				if expr.is_none() || args.iter().find(|e| e.is_none()).is_some() {
-					return None;
-				}
-				let function = match expr.unwrap() {
-					StaticValue::BuiltinFunction(function) => function.0,
-					_ => unreachable!(),
-				};
-				let args: Vec<_> = args.into_iter().map(|e| e.unwrap()).collect();
-				Some(function(&args))
-			},
-		}
-	}
-}
-
-fn static_value_to_js(value: &StaticValue) -> String {
-	match value {
-		StaticValue::Px(n) => format!("Dom.Length.px({n})"),
-		StaticValue::Float(n) => format!("Dom.Float.from({n})"),
-		StaticValue::Int(n) => format!("Dom.Int.from({n})"),
-		StaticValue::Color(r, g, b, a) => format!("Dom.Brush.rgba({r},{g},{b},{a})"),
-		StaticValue::String(n) => {
-			let n = format!("\"{}\"", n.replace("\n", "\\n").replace("\t", "\\t"));
-			format!("Dom.String.from({n})")
-		},
-		StaticValue::Boolean(n) => format!("Dom.Boolean.{}", if *n { "true" } else { "false" }),
-		StaticValue::BuiltinFunction(..) => unreachable!(),
-	}
-}
-
 fn generate_property_assignment(name: &str, expr: &CheckedExpr, is_preset: bool) -> String {
-	let constant_value = if let Some(value) = expr.expr.value.try_into_static() {
-		Some(static_value_to_js(&value))
-	} else if expr.bindings.len() == 0 {
+	let constant_value = if expr.bindings.len() == 0 {
 		Some(expr_to_js(&expr.expr.value))
 	} else {
 		None
@@ -119,12 +78,18 @@ fn generate_property_assignment(name: &str, expr: &CheckedExpr, is_preset: bool)
 		} else {
 			format!("e.bindings.{name}")
 		};
-		format!("{binding}.connect([{required_bindings}], {received_props} => {rendered_expr}); ")
+		format!("{binding}.bind([{required_bindings}], {received_props} => {rendered_expr}); ")
 	}
 }
 
 fn expr_to_js(value: &ExprValue) -> String {
 	match value {
+		ExprValue::Px(n) => format!("Dom.Length.px({n})"),
+		ExprValue::Float(n) => n.to_string(),
+		ExprValue::Int(n) => n.to_string(),
+		ExprValue::Color(r, g, b, a) => format!("Dom.Brush.rgba({r},{g},{b},{a})"),
+		ExprValue::String(n) => format!("\"{}\"", n.replace("\n", "\\n").replace("\t", "\\t")),
+		ExprValue::Boolean(n) => format!("Dom.Boolean.{}", if *n { "true" } else { "false" }),
 		ExprValue::Enum(name, enum_name) => {
 			let name = name.to_case(Case::UpperCamel);
 			format!("Dom.Enum.{}.{}", enum_name.clone().unwrap(), name)
@@ -138,7 +103,21 @@ fn expr_to_js(value: &ExprValue) -> String {
 			format!("{}{}", ctx, path.join("."))
 		},
 		ExprValue::Coerce(expr, coerce_type) => {
-			format!("{}.coerce({})", type_to_js(coerce_type, false), expr_to_js(&expr.value))
+			let coerce_fn = match coerce_type {
+				Type::Int => "Int",
+				Type::Float => "Float",
+				Type::String => "String",
+				Type::Boolean => "Boolean",
+				_ => unreachable!()
+			};
+			format!("Dom.Coerce.{coerce_fn}({})", expr_to_js(&expr.value))
+		},
+		ExprValue::AsIter(expr, iter_type) => {
+			match iter_type {
+				Type::Int => format!("Dom.Iter.fromInt({})", expr_to_js(&expr.value)),
+				Type::Iter(_) => expr_to_js(&expr.value),
+				_ => unimplemented!("{:?}", iter_type),
+			}
 		},
 		ExprValue::FunctionCall(expr, args) => {
 			let args = args.iter().map(|e| expr_to_js(&e.value)).collect::<Vec<String>>().join(", ");
@@ -166,14 +145,14 @@ fn generate_element_impl(element: &Element, skip_if_for: bool) -> String {
 				generate_element_impl(element, true)
 			);
 		} else if let Some(repeater) = &element.repeater {
-			let item_type = type_to_js(&repeater.item_type, true);
+			let item_type = type_to_js(&repeater.item_type);
 			let index  = repeater.index.clone().unwrap_or("_$unused_index".into());
 			let item  = repeater.item.clone().unwrap_or("_$unused_item".into());
 			let collection = generate_property_assignment("collection", &repeater.collection, false);
 			return format!(
 				"(() => {{
 					let e = dom.Repeater<{item_type}, Dom.{}>
-					({item_type}, ({index}, {item}) => {{
+					(({index}, {item}) => {{
 						return [{}];
 					}});
 					{collection}
@@ -194,7 +173,7 @@ fn generate_element_impl(element: &Element, skip_if_for: bool) -> String {
 			Content::Element(e) => {
 				format!("e.children.append({});", generate_element(e))
 			},
-			Content::Children(c) => {
+			Content::Children(_c) => {
 				unimplemented!()
 			},
 		}
@@ -219,9 +198,9 @@ pub fn generate<P: Into<PathBuf>>(
 		.iter()
 		.map(|prop| {
 			format!(
-				"{}: new Dom.Binding({}), ",
+				"{}: Dom.PropertyFactory.{}(), ",
 				prop.name,
-				type_to_js(&prop.prop_type, false),
+				type_to_prop_method(&prop.prop_type),
 			)
 		})
 		.collect();

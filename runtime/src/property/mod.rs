@@ -34,6 +34,7 @@ pub struct PropertyFactoryImpl {
 	count: usize,
 	count_all: usize,
 	change_set: HashSet<Box<dyn DynProperty>>,
+	notify: bool,
 }
 
 impl PropertyFactoryImpl {
@@ -48,6 +49,7 @@ impl PropertyFactory {
 			count: 0,
 			count_all: 0,
 			change_set: HashSet::new(),
+			notify: true,
 		})))
 	}
 
@@ -66,23 +68,29 @@ impl PropertyFactory {
 	}
 
 	pub fn commit_changes(&self) {
-		let mut listeners = Vec::new();
+		let mut listeners = HashSet::new();
 		while self.0.borrow().change_set.len() > 0 {
 			let change_set = mem::replace(&mut self.0.borrow_mut().change_set, HashSet::new());
 			for prop in change_set {
 				prop.commit_changes();
 				if let Some(listener) = prop.listener() {
-					listeners.push(listener);
+					listeners.insert(listener);
 				}
 			}
 		}
-		for listener in listeners {
-			listener.notify()
+		if self.0.borrow_mut().notify {
+			for listener in listeners {
+				listener.notify();
+			}
 		}
 	}
 
 	pub fn count(&self) -> usize {
 		self.0.borrow().count
+	}
+
+	pub fn notify(&self, value: bool) {
+		self.0.borrow_mut().notify = value;
 	}
 }
 
@@ -96,17 +104,30 @@ pub struct Property<V: Value + 'static>(Rc<PropertyCell<V>>);
 
 pub trait Listener {
 	fn notify(&self);
-	fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "<Listener>")
-	}
+	fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "<Listener>") }
 	fn clone(&self) -> Box<dyn Listener>;
+	fn id(&self) -> usize;
 }
 
-impl fmt::Debug for Box<dyn Listener> {
+impl fmt::Debug for dyn Listener {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		self.fmt_debug(f)
 	}
 }
+
+impl Hash for dyn Listener {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.id().hash(state)
+	}
+}
+
+impl PartialEq for dyn Listener {
+	fn eq(&self, other: &Self) -> bool {
+		self.id() == other.id()
+	}
+}
+
+impl Eq for dyn Listener {}
 
 #[derive(Debug)]
 pub struct PropertyImpl<V: Value + 'static> {
@@ -140,17 +161,17 @@ pub trait DynProperty {
 	fn listener(&self) -> Option<Box<dyn Listener>>;
 }
 
-impl Hash for Box<dyn DynProperty> {
+impl Hash for dyn DynProperty {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.id().hash(state)
 	}
 }
-impl PartialEq for Box<dyn DynProperty> {
+impl PartialEq for dyn DynProperty {
 	fn eq(&self, rhs: &Self) -> bool {
     self.id() == rhs.id()
 	}
 }
-impl Eq for Box<dyn DynProperty> {}
+impl Eq for dyn DynProperty {}
 
 impl fmt::Debug for dyn DynProperty {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -271,6 +292,9 @@ impl <V: Value> Property<V> {
 		for (index, parent) in parents.into_iter().enumerate() {
 			parent.add_child(Rc::downgrade(&transform), index);
 		}
+
+		let factory = self.get_impl().factory.upgrade();
+		factory.unwrap().borrow_mut().add_to_change_set(self.dynamic());
 		Ok(())
 	}
 

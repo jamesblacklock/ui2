@@ -426,7 +426,7 @@ impl Parser {
 			match suffix.as_str() {
 				"px" => Ok(Expr { value: ExprValue::Px(n), span }),
 				"" => {
-					let value = if float { ExprValue::Float(n) } else { ExprValue::Int(n as i64) };
+					let value = if float { ExprValue::Float(n) } else { ExprValue::Int(n as i32) };
 					Ok(Expr { value, span })
 				},
 				_ => {

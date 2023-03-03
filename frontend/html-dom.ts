@@ -1,104 +1,6 @@
 import * as dom from './dom';
-import { Color } from './brush';
 
 export * from './dom';
-
-class Vw extends dom.Length {
-  constructor(public value: number) {
-    super();
-  }
-  equals(other: dom.Property): boolean {
-    return other instanceof Vw && this.value === other.value;
-  }
-  add(other: dom.Length): dom.Length {
-    if(other instanceof Vw) {
-      return new Vw(this.value + other.value);
-    }
-    return super.add(other)
-  }
-  sub(other: dom.Length): dom.Length {
-    if(other instanceof Vw) {
-      return new Vw(this.value - other.value);
-    }
-    return super.sub(other)
-  }
-  mul(fac: number): dom.Length {
-    return new Vw(this.value * fac);
-  }
-  div(fac: number): dom.Length {
-    return new Vw(this.value / fac);
-  }
-  neg(): dom.Length {
-    return new Vw(-this.value);
-  }
-}
-
-class Vh extends dom.Length {
-  constructor(public value: number) {
-    super();
-  }
-  equals(other: dom.Property): boolean {
-    return other instanceof Vh && this.value === other.value;
-  }
-  add(other: dom.Length): dom.Length {
-    if(other instanceof Vh) {
-      return new Vh(this.value + other.value);
-    }
-    return super.add(other);
-  }
-  sub(other: dom.Length): dom.Length {
-    if(other instanceof Vh) {
-      return new Vh(this.value - other.value);
-    }
-    return super.sub(other);
-  }
-  mul(fac: number): dom.Length {
-    return new Vh(this.value * fac);
-  }
-  div(fac: number): dom.Length {
-    return new Vh(this.value / fac);
-  }
-  neg(): dom.Length {
-    return new Vh(-this.value);
-  }
-}
-
-function lengthToCss(length: dom.Length, top = true): string {
-  let css;
-  if(length instanceof dom.Px) {
-    return `${length.value}px`;
-  } else if(length instanceof Vh) {
-    return `${length.value * 100}vh`;
-  } else if(length instanceof Vw) {
-    return `${length.value * 100}vw`;
-  } else if(length instanceof dom.LengthAddition) {
-    css = `(${lengthToCss(length.op1, false)} + ${lengthToCss(length.op2, false)})`;
-  } else if(length instanceof dom.LengthMultiplication) {
-    css = `(${lengthToCss(length.op1, false)} * ${length.op2})`;
-  } else if(length instanceof dom.LengthSubtraction) {
-    css = `(${lengthToCss(length.op1, false)} - ${lengthToCss(length.op2, false)})`;
-  } else if(length instanceof dom.LengthDivision) {
-    css = `(${lengthToCss(length.op1, false)} / ${length.op2})`;
-  } else if(length instanceof dom.LengthNegation) {
-    css = `(0px - ${lengthToCss(length.op1, false)})`;
-  } else {
-    throw new Error(`length type not recognized: ${length.constructor.name}`);
-  }
-
-  if(top) {
-    return `calc${css}`;
-  }
-
-  return css;
-}
-
-function colorToCss(color: Color) {
-  const r = color.r * 255;
-  const g = color.g * 255;
-  const b = color.b * 255;
-  const a = color.a * 255;
-  return `rgba(${r}, ${g}, ${b}, ${a})`;
-}
 
 function convertEvent(event: Event) {
   return event;
@@ -164,13 +66,6 @@ export class Rect extends dom.Rect implements HtmlComponent {
 
   constructor(dom: Dom) {
     super();
-    this.bindings.fill.onChange(() => this._fillChanged());
-    this.bindings.x1.onChange(() => this._positionChanged());
-    this.bindings.y1.onChange(() => this._positionChanged());
-    this.bindings.x2.onChange(() => this._positionChanged());
-    this.bindings.y2.onChange(() => this._positionChanged());
-    this.privateModel.bindings.parentSize.width.onChange(() => this._positionChanged());
-    this.privateModel.bindings.parentSize.height.onChange(() => this._positionChanged());
 
     this.html = dom.document.createElement('div');
     this.html.style.position = 'absolute';
@@ -188,7 +83,6 @@ export class Rect extends dom.Rect implements HtmlComponent {
     if(this.html === undefined || this.fillUpdateRequest !== undefined) {
       return;
     }
-    this._updateTransition('background', this.bindings.fill.transition);
     cancelAnimationFrame(this.fillUpdateRequest ?? 0);
 
     this.fillUpdateRequest = window.requestAnimationFrame(() => {
@@ -197,19 +91,19 @@ export class Rect extends dom.Rect implements HtmlComponent {
         return;
       }
       const fill = this.props.fill;
-      if(fill instanceof Color) {
-        this.html.style.background = colorToCss(fill);
-      }
+      this.html.style.background = fill.toCss();
     });
   }
+  _x1Changed() { this._positionChanged(); }
+  _y1Changed() { this._positionChanged(); }
+  _x2Changed() { this._positionChanged(); }
+  _y2Changed() { this._positionChanged(); }
+  _parentWidthChanged() { this._positionChanged(); }
+  _parentHeightChanged() { this._positionChanged(); }
   _positionChanged() {
     if(this.html === undefined || this.positionUpdateRequest != undefined) {
       return;
     }
-    this._updateTransition('left', this.bindings.x1.transition);
-    this._updateTransition('right', this.bindings.x2.transition);
-    this._updateTransition('top', this.bindings.y1.transition);
-    this._updateTransition('bottom', this.bindings.y2.transition);
 
     this.positionUpdateRequest = window.requestAnimationFrame(() => {
       this.positionUpdateRequest = undefined;
@@ -221,10 +115,10 @@ export class Rect extends dom.Rect implements HtmlComponent {
       const right = parentW.mul(0.5).sub(this.props.x2);
       const bottom = parentH.mul(0.5).sub(this.props.y2);
 
-      this.html.style.left = lengthToCss(left);
-      this.html.style.top = lengthToCss(top);
-      this.html.style.right = lengthToCss(right);
-      this.html.style.bottom = lengthToCss(bottom);
+      this.html.style.left = left.toCss();
+      this.html.style.top = top.toCss();
+      this.html.style.right = right.toCss();
+      this.html.style.bottom = bottom.toCss();
     });
   }
   _updateTransition(key: string, transition?: dom.Transition) {
@@ -247,10 +141,9 @@ export class Text extends dom.Text implements HtmlComponent {
   constructor(dom: Dom) {
     super();
     this.html = dom.document.createElement('span');
-    this.bindings.content.onChange(this.updateText.bind(this));
   }
-  updateText(_prev: dom.String, cur: dom.String) {
-    this.html.textContent = cur.value;
+  _contentChanged() {
+    this.html.textContent = this.props.content;
   }
 }
 
@@ -280,18 +173,17 @@ export class Layout extends dom.Layout implements HtmlComponent {
     this.html.style.top = '0px';
     this.html.style.right = '0px';
     this.html.style.bottom = '0px';
-
-    this.bindings.layout.onChange(() => this._layoutChanged());
-    this.bindings.padding.onChange(() => this._paddingChanged());
     this._layoutChanged();
   }
   _layoutChanged() {
     this.html.style.flexDirection = this.props.layout === dom.Enum.Layout.Row ? 'row' : 'column';
   }
   _paddingChanged() {
-    this.html.style.padding = lengthToCss(this.props.padding);
+    this.html.style.padding = this.props.padding.toCss();
   }
 }
+
+
 
 export class Body extends dom.Container<Body> implements HtmlComponent {
   html: HTMLElement;
@@ -308,10 +200,10 @@ export class Body extends dom.Container<Body> implements HtmlComponent {
 
   provide(): { [key: string]: any } {
     return {
-      parent: new dom.Binding(dom.Container).set(this),
+      parent: new dom.ComponentProperty().set(this),
       frameSize: {
-        width: new dom.Binding(dom.Length).set(new Vw(1)),
-        height: new dom.Binding(dom.Length).set(new Vh(1)),
+        width: dom.PropertyFactory.length().set(dom.Length.__htmlVw(1)),
+        height: dom.PropertyFactory.length().set(dom.Length.__htmlVh(1)),
       },
     }
   }
@@ -342,10 +234,9 @@ export class Dom implements dom.Dom {
   Pane() {
     return new Pane(this);
   }
-  Repeater<P extends dom.Property, E = unknown>(
-    init: dom.PropertyConstructor<P>,
-    proc: (i: dom.Int, p: P) => dom.Component<E>[]
+  Repeater<V extends dom.Value, E = unknown>(
+    proc: (i: number, p: V) => dom.Component<E>[]
   ) {
-    return new dom.Repeater(init, proc);
+    return new dom.Repeater(proc);
   }
 }

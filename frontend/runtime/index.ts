@@ -10,7 +10,7 @@ interface PropertyMethodTable<V = number> {
   weakref: (ptr: number) => number;
   freeze: (ptr: number) => void;
   bind: (ptr: number, parents: number, transform: number, resptr: number) => void;
-  unbind: (ptr: number) => void;
+  unbind: (ptr: number, resptr: number) => void;
 }
 
 interface Abi {
@@ -83,6 +83,8 @@ interface Abi {
   property__weakref__drop(ptr: number): void;
   property_factory__commit_changes(ptr: number): number;
   property_factory__drop(ptr: number): void;
+  property_factory__count(ptr: number): number;
+  property_factory__set_notify(ptr: number, value: number): void;
   property_factory__new_factory(): number;
   property_factory__new_property__boolean(ptr: number, notify: number): number;
   property_factory__new_property__float(ptr: number, notify: number): number;
@@ -147,11 +149,12 @@ const wasm_imports = {
   runtime: {
     __dispatch_function(ptr: number, args: number) {
       const fn = getHeapObject(ptr);
-      if(!(fn instanceof Function)) {
+      if(fn instanceof Function) {
+        return fn(args);
+      } else {
         console.error('tried to dispatch non-function!', ptr, fn);
         return 0;
       }
-      return fn?.(args);
     },
     __drop_function(ptr: number) {
       dropFromHeap(ptr);
@@ -405,6 +408,8 @@ class PropertyFactoryClass {
       });
     }
   }
+  get count() { return ABI.property_factory__count(this.ptr); }
+  set notify(value: boolean) { ABI.property_factory__set_notify(this.ptr, value ? 1 : 0); }
 }
 
 export const PropertyFactory = new PropertyFactoryClass();
@@ -435,24 +440,24 @@ export class Property<V = any> {
   weakref() {
     return PropertyWeakRef.fromRuntimePtr(this.table.weakref.call(null, this.ptr));
   }
-  bind<P extends readonly Property<any>[]>(parents: P, fn: Transformer<P, V>) {
+  bind<P extends readonly Property<any>[]>(parents: P, fn?: Transformer<P, V>) {
     const vec = PropertyVec.new();
     for(const parent of parents) {
       vec.push(parent);
     }
-    const wrapperFn = (argsptr: number) => {
+    const wrapperFn = fn && ((argsptr: number) => {
       const args = ValueVec.fromRuntimePtr(argsptr);
       const values = args.toArray();
       let result = fn(values as unknown as PropertyValues<P>);
       const wrapped = WrappedValue.wrap(result as string | number).ptr;
       return wrapped;
-    };
-    this.table.bind.call(null, this.ptr, vec.ptr, addToHeap(wrapperFn), this.result.ptr);
+    });
+    this.table.bind.call(null, this.ptr, vec.ptr, wrapperFn ? addToHeap(wrapperFn) : 0, this.result.ptr);
     this.result.verify();
     return this;
   }
   unbind() {
-    this.table.unbind.call(null, this.ptr);
+    this.table.unbind.call(null, this.ptr, this.result.ptr);
     return this;
   }
   toString() {

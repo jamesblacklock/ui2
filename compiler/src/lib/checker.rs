@@ -252,7 +252,8 @@ fn check_expr(
 				);
 				return Err(());
 			}
-		}
+		},
+		ExprValue::AsIter(..) => unreachable!()
 	};
 	if let Some(t) = implicit_type {
 		Ok(try_coerce(checked, t))
@@ -337,11 +338,18 @@ pub fn check_element(scope: &mut Module, unchecked: &ParserElement, child_rules:
 		if let Some((binding, span)) = &repeater.item {
 			scope.declare(binding, &item_type, span)?;
 		}
-		assert!(unchecked.path.len() == 1);
+		assert!(unchecked.path.len() == 1); // TODO: handle longer paths
 		Some(CheckedRepeater {
 			index: repeater.index.clone().map(|(s, _)| s),
 			item: repeater.item.clone().map(|(s, _)| s),
-			collection,
+			collection: CheckedExpr {
+				expr: Expr {
+					span: collection.expr.span.clone(),
+					value: ExprValue::AsIter(Box::new(collection.expr), collection.expr_type.clone())
+				},
+				expr_type: Type::Iter(Box::new(item_type.clone())),
+				bindings: collection.bindings,
+			},
 			item_type,
 			root_type: unchecked.path[0].clone(),
 		})

@@ -1,32 +1,32 @@
-import { Binding } from "./binding";
-import { Property } from "./common";
+import { ComponentProperty } from './dom';
+import { Property } from './runtime';
 
-export type BindingSet = {
-  [key: string]: Binding<any> | BindingSet;
+export type PropertySet = {
+  [key: string]: Property<any> | PropertySet;
 };
 
-export type PropertySet<B> = {
-  [P in keyof B]: B[P] extends Binding<infer Q> ? Q : PropertySet<B[P]>;
+export type ValueSet<B> = {
+  [P in keyof B]: B[P] extends Property<infer Q> ? Q : ValueSet<B[P]>;
 };
 
-export class Model<B extends BindingSet> {
-  props: PropertySet<B>;
+export class Model<B extends PropertySet> {
+  props: ValueSet<B>;
 
   constructor(public bindings: B) {
-    this.props = this._defineProperties(bindings, {}) as PropertySet<B>;
+    this.props = this._defineProperties(bindings, {}) as ValueSet<B>;
   }
 
-  _defineProperty(bindings: BindingSet, key: string, target: Object) {
-    let item: Binding | BindingSet = bindings[key];
-    if(item instanceof Binding) {
+  _defineProperty(bindings: PropertySet, key: string, target: Object) {
+    let item: Property | PropertySet = bindings[key];
+    if(item instanceof Property || item instanceof ComponentProperty) {
       Object.defineProperty(target, key, {
         configurable: false,
         enumerable: true,
-        get() { return (item as Binding).get(); },
-        set(value: Property) { (item as Binding).set(value); },
+        get() { return (item as Property).get(); },
+        set(value) { (item as Property).set(value); },
       });
     } else {
-      const value = this._defineProperties(item as BindingSet, {});
+      const value = this._defineProperties(item as PropertySet, {});
       Object.defineProperty(target, key, {
         configurable: false,
         enumerable: true,
@@ -42,7 +42,7 @@ export class Model<B extends BindingSet> {
     }
   }
 
-  _defineProperties(bindings: BindingSet, target: Object) {
+  _defineProperties(bindings: PropertySet, target: Object) {
     for(const key of Object.keys(bindings)) {
       this._defineProperty(bindings, key, target);
     }

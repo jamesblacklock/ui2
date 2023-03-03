@@ -1,19 +1,12 @@
-import { Length } from './length';
-import { Brush } from './brush';
-import { Component, Property, PropertyConstructor } from './common';
-import { Binding } from './binding';
+import { PropertyFactory, Length, Property, Transformer, Value } from './runtime';
 import { Model } from './model';
-import { String, Int, Float, Boolean, Iter } from './types';
-import { BindingPreset } from './binding-preset';
+import { PropertyPreset } from './property-preset';
 
-export * from './types';
-export * from './common';
-export * from './length';
-export * from './brush';
 export * from './transition';
-export * from './binding';
 export * from './model';
 export * as Builtins from './builtins';
+export * as Coerce from './coerce';
+export * from './runtime';
 
 export type EventHandler<E> = (el: E, e: Event) => unknown;
 
@@ -45,6 +38,20 @@ function pointerEvents<E>(element: E) {
   }
 }
 
+export abstract class Component<E = unknown> {
+  static default() { return new NullComponent() };
+  static coerce(e: any) { return e instanceof Component ? e : new NullComponent() };
+  equals(other: this) { return this === other }
+  interpolate(next: this, _fac: number) { return next }
+  inject(_deps: { [key: string]: any }) {}
+  abstract getRoots(): E[];
+}
+
+export class NullComponent extends Component {
+  getRoots() { return []; }
+}
+
+
 export abstract class Container<E = unknown, Child = unknown> extends Component<E> {
   static default() { return new NullContainer(null); }
   static coerce(e: any): Container<unknown> { return e instanceof Container ? e : this.default(); }
@@ -62,12 +69,12 @@ export abstract class Container<E = unknown, Child = unknown> extends Component<
 
   provide(): { [key: string]: any } {
     return {
-      parent: new Binding(Container).set(this).freeze(),
+      parent: new ComponentProperty().set(this).freeze(),
     };
   }
 }
 
-export class NullContainer extends Container {
+export class NullContainer<T> extends Container<any, T> {
   getRoots() {
     return [];
   }
@@ -82,14 +89,14 @@ export class Children<T = unknown> {
   arr: [any, T[]][] = [];
   adapter?: ChildrenAdapter;
   parent: Container<unknown>;
-  childCount = new Binding(Int);
+  childCount = PropertyFactory.int();
 
   constructor(parent: any) {
     this.parent = parent as Container<Object>;
   }
 
   append(child: Component<T>) {
-    this.childCount.set(Int.from(this.childCount.get().value + 1))
+    this.childCount.set(this.childCount.get() + 1)
     child.inject(this.parent.provide());
     const roots = child.getRoots();
     if(roots.length === 0) {
@@ -136,64 +143,66 @@ class NullChildren<T> extends Children<T> {
 
 export class Text extends Component<Text> {
   #t: 'Text' = 'Text';
-  #model = new Model({
-    content: new Binding(String),
+  private model = new Model({
+    content: PropertyFactory.string(() => this._contentChanged()),
   });
 
   get bindings() {
-    return this.#model.bindings;
+    return this.model.bindings;
   }
 
   get props() {
-    return this.#model.props;
+    return this.model.props;
   }
 
   getRoots() { return [this]; }
+
+  protected _contentChanged() {}
 }
 
 export type FrameSize = {
-  width: Binding<Length>,
-  height: Binding<Length>,
+  width: Property<Length>,
+  height: Property<Length>,
 }
 
 export class Rect extends Container<Rect> {
   #t: 'Rect' = 'Rect';
-  #model = new Model({
-    fill: new Binding(Brush),
-    x1: new Binding(Length),
-    y1: new Binding(Length),
-    x2: new Binding(Length),
-    y2: new Binding(Length),
-    width: new Binding(Length),
-    height: new Binding(Length),
+  private model = new Model({
+    fill: PropertyFactory.brush(() => this._fillChanged()),
+    x1: PropertyFactory.length(() => this._x1Changed()),
+    y1: PropertyFactory.length(() => this._y1Changed()),
+    x2: PropertyFactory.length(() => this._x2Changed()),
+    y2: PropertyFactory.length(() => this._y2Changed()),
+    width: PropertyFactory.length(() => this._widthChanged()),
+    height: PropertyFactory.length(() => this._heightChanged()),
   });
   protected privateModel = new Model({
     parentSize: {
-      width: new Binding(Length),
-      height: new Binding(Length),
+      width: PropertyFactory.length(() => this._parentWidthChanged()),
+      height: PropertyFactory.length(() => this._parentHeightChanged()),
     }
   });
 
-  scaleToParent = new BindingPreset(Float)
+  scaleToParent = new PropertyPreset(PropertyFactory.float())
     .addChild(
       this.bindings.x1,
       [this.privateModel.bindings.parentSize.width] as const,
-      (value, [width]) => width.mul(value.value/2).neg(),
+      ([value, width]) => width.mul(value/2).neg(),
     )
     .addChild(
       this.bindings.x2,
       [this.privateModel.bindings.parentSize.width] as const,
-      (value, [width]) => width.mul(value.value/2),
+      ([value, width]) => width.mul(value/2),
     )
     .addChild(
       this.bindings.y1,
       [this.privateModel.bindings.parentSize.height] as const,
-      (value, [height]) => height.mul(value.value/2).neg(),
+      ([value, height]) => height.mul(value/2).neg(),
     )
     .addChild(
       this.bindings.y2,
       [this.privateModel.bindings.parentSize.height] as const,
-      (value, [height]) => height.mul(value.value/2),
+      ([value, height]) => height.mul(value/2),
     );;
 
   readonly events = {
@@ -202,22 +211,22 @@ export class Rect extends Container<Rect> {
 
   constructor() {
     super(null);
-    this.bindings.width.connect(
+    this.bindings.width.bind(
       [this.bindings.x1, this.bindings.x2] as const,
       ([x1, x2]) => x2.sub(x1)
     ).freeze();
-    this.bindings.height.connect(
+    this.bindings.height.bind(
       [this.bindings.y1, this.bindings.y2] as const,
       ([y1, y2]) => y2.sub(y1)
     ).freeze();
   }
 
   get bindings() {
-    return this.#model.bindings;
+    return this.model.bindings;
   }
 
   get props() {
-    return this.#model.props;
+    return this.model.props;
   }
 
   provide() {
@@ -229,57 +238,124 @@ export class Rect extends Container<Rect> {
   inject(deps: { [key: string]: any; }) {
     super.inject(deps);
     if(deps.frameSize) {
-      this.privateModel.bindings.parentSize.width.connect([deps.frameSize.width]);
-      this.privateModel.bindings.parentSize.height.connect([deps.frameSize.height]);
+      this.privateModel.bindings.parentSize.width.bind([deps.frameSize.width as Property<Length>]);
+      this.privateModel.bindings.parentSize.height.bind([deps.frameSize.height as Property<Length>]);
     }
   }
 
   getRoots() { return [this]; }
+
+  protected _fillChanged() {}
+  protected _x1Changed() {}
+  protected _y1Changed() {}
+  protected _x2Changed() {}
+  protected _y2Changed() {}
+  protected _widthChanged() {}
+  protected _heightChanged() {}
+  protected _parentWidthChanged() {}
+  protected _parentHeightChanged() {}
+}
+
+const COMPONENTS: Component[] = [null as never];
+
+export class ComponentProperty {
+  property: Property<number>;
+  lastValue = 0;
+
+  constructor(notify?: () => void) {
+    this.property = PropertyFactory.int(notify && (() => {
+      if(this.lastValue != 0) {
+        notify()
+      }
+    }));
+    this.set(new NullComponent());
+  }
+
+  get() { return COMPONENTS[this.property.get()]; }
+  set(component: Component) {
+    const value = COMPONENTS.length;
+    COMPONENTS.push(component);
+    this.property.set(value);
+    this.changed();
+    return this;
+  }
+  freeze() {
+    this.property.freeze();
+    return this;
+  }
+  bind<P extends readonly Property<any>[]>(parents: P, fn: Transformer<P, Component>) {
+    this.property.bind(parents, v => {
+      const component = fn(v);
+      const value = COMPONENTS.length;
+      COMPONENTS.push(component);
+      this.changed();
+      return value;
+    });
+    return this;
+  }
+  unbind() {
+    this.property.unbind();
+   return this;
+  }
+  toString() { return this.property.toString(); }
+
+  private changed() {
+    const value = this.property.get();
+    if(this.lastValue !== 0) {
+      delete COMPONENTS[this.lastValue];
+    }
+    this.lastValue = value;
+  }
 }
 
 export class Slot<T = unknown> extends Component<T> {
   #t: 'Slot' = 'Slot';
-  #model = new Model({
-    component: new Binding(Component),
-    insert: new Binding(Boolean),
+  private model = new Model({
+    component: new ComponentProperty(() => this._updateComponent()) as unknown as Property<Component<T>>,
+    insert: PropertyFactory.boolean(() => this._updateInsert()),
   });
 
-  parent = new Binding(Container) as Binding<Container<unknown, T>>;
+  prev: Component<T>;
+  parent = new ComponentProperty() as unknown as Property<Container<unknown, T>>;
   injected: { [key: string]: any; } = {};
   parentHasBeenSet = false;
-  emptyComponent: Component;
+  emptyComponent: Component<T>;
 
   constructor() {
     super();
-    this.bindings.component.onChange(this._updateComponent.bind(this));
-    this.bindings.insert.onChange(this._updateInsert.bind(this));
+    this.parent.set(new NullContainer<T>(null));
     this.emptyComponent = this.props.component;
+    this.prev = this.props.component;
   }
 
   inject(deps: { [key: string]: any; }) {
     this.parent.set(deps.parent.get());
     this.parentHasBeenSet = true;
     this.injected = deps;
-    this._updateComponent(this.props.component, this.props.component);
+    this._updateComponent();
   }
 
   get bindings() {
-    return this.#model.bindings;
+    return this.model.bindings;
   }
 
   get props() {
-    return this.#model.props;
+    return this.model.props;
   }
 
   getRoots(): T[] {
-    return this.props.insert.value ? this.props.component.getRoots() : this.emptyComponent.getRoots();
+    const q = this.props.component.getRoots();
+    const r = this.emptyComponent.getRoots();
+    return this.props.insert ? q : r;
   }
 
-  private _updateComponent(prev: Component, cur: Component) {
+  private _updateComponent(/*prev: Component, cur: Component*/) {
+    const cur = this.props.component;
     cur.inject(this.injected);
-    if(this.parentHasBeenSet && prev !== cur) {
+    if(this.parentHasBeenSet && this.prev !== cur) {
       this.parent.get().children.update(this);
     }
+    this.prev = cur;
   }
 
   private _updateInsert() {
@@ -289,36 +365,14 @@ export class Slot<T = unknown> extends Component<T> {
   }
 }
 
-class LayoutEnum implements Property {
-  static Row = new LayoutEnum();
-  static Column = new LayoutEnum();
-  static default() { return this.Row; }
-  static coerce(e: any) { return e instanceof this ? e : this.Row; }
-  constructor() {
-    if(LayoutEnum.Column !== undefined) {
-      throw new Error('cannot construct new instances of Enum.Layout');
-    }
-  }
-  interpolate(next: this, _fac: number) {
-    return next;
-  }
-  equals(other: this): boolean {
-    return other === this;
-  }
-}
-
-export const Enum = {
-  Layout: LayoutEnum,
-};
-
 export class Pane extends Container<Pane> {
   #t: 'Pane' = 'Pane';
-  #privateModel = new Model({
-    siblingCount: new Binding(Int),
-    padding: new Binding(Length),
+  private privateModel = new Model({
+    siblingCount: PropertyFactory.int(),
+    padding: PropertyFactory.length(),
     selfSize: {
-      width: new Binding(Length),
-      height: new Binding(Length),
+      width: PropertyFactory.length(),
+      height: PropertyFactory.length(),
     },
   });
   constructor() {
@@ -329,25 +383,25 @@ export class Pane extends Container<Pane> {
 
   inject(deps: { [key: string]: any; }): void {
     if(deps.layoutInfo) {
-      this.#privateModel.bindings.siblingCount.connect([deps.layoutInfo.itemCount]);
-      this.#privateModel.bindings.padding.connect([deps.layoutInfo.padding]);
+      this.privateModel.bindings.siblingCount.bind([deps.layoutInfo.itemCount as Property<number>]);
+      this.privateModel.bindings.padding.bind([deps.layoutInfo.padding as Property<Length>]);
     }
     if(deps.frameSize) {
-      this.#privateModel.bindings.selfSize.width.connect(
+      this.privateModel.bindings.selfSize.width.bind(
         [
-          deps.frameSize.width as Binding<Length>,
-          this.#privateModel.bindings.padding,
-          this.#privateModel.bindings.siblingCount,
+          deps.frameSize.width as Property<Length>,
+          this.privateModel.bindings.padding,
+          this.privateModel.bindings.siblingCount,
         ] as const,
         ([width, padding, siblingCount]) => {
-          return width.sub(padding.mul(2)).div(siblingCount.value);
+          return width.sub(padding.mul(2)).div(siblingCount);
         },
       );
-      this.#privateModel.bindings.selfSize.height.connect(
+      this.privateModel.bindings.selfSize.height.bind(
         [
-          deps.frameSize.height as Binding<Length>,
-          this.#privateModel.bindings.padding,
-          this.#privateModel.bindings.siblingCount,
+          deps.frameSize.height as Property<Length>,
+          this.privateModel.bindings.padding,
+          this.privateModel.bindings.siblingCount,
         ] as const,
         ([height, padding, siblingCount]) => height.sub(padding.mul(2)),
       );
@@ -356,7 +410,7 @@ export class Pane extends Container<Pane> {
   provide() {
     return {
       ...super.provide(),
-      frameSize: this.#privateModel.bindings.selfSize,
+      frameSize: this.privateModel.bindings.selfSize,
       layoutInfo: {
         itemCount: this.children.childCount,
       },
@@ -366,14 +420,14 @@ export class Pane extends Container<Pane> {
 
 export class Layout extends Container<Layout, Pane> {
   #t: 'Layout' = 'Layout';
-  #publicModel = new Model({
-    padding: new Binding(Length),
-    layout: new Binding(Enum.Layout),
+  private publicModel = new Model({
+    padding: PropertyFactory.length(() => this._paddingChanged()),
+    layout: PropertyFactory.layout(() => this._layoutChanged()),
   });
   protected privateModel = new Model({
     parentSize: {
-      width: new Binding(Length),
-      height: new Binding(Length),
+      width: PropertyFactory.length(),
+      height: PropertyFactory.length(),
     },
   });
 
@@ -382,17 +436,17 @@ export class Layout extends Container<Layout, Pane> {
   }
 
   get bindings() {
-    return this.#publicModel.bindings;
+    return this.publicModel.bindings;
   }
 
   get props() {
-    return this.#publicModel.props;
+    return this.publicModel.props;
   }
 
   inject(deps: { [key: string]: any }) {
     if(deps.frameSize) {
-      this.privateModel.bindings.parentSize.width.connect([deps.frameSize.width]);
-      this.privateModel.bindings.parentSize.height.connect([deps.frameSize.height]);
+      this.privateModel.bindings.parentSize.width.bind([deps.frameSize.width as Property<Length>]);
+      this.privateModel.bindings.parentSize.height.bind([deps.frameSize.height as Property<Length>]);
     }
   }
   provide() {
@@ -407,29 +461,30 @@ export class Layout extends Container<Layout, Pane> {
   }
 
   getRoots() { return [this]; }
+
+  protected _layoutChanged() {}
+  protected _paddingChanged() {}
 }
 
-export class Repeater<P extends Property = Property, E = unknown> extends Component<E> {
+export class Repeater<V extends Value = Value, E = unknown> extends Component<E> {
   #t : 'Repeater' = 'Repeater';
-  #model;
+  private model = new Model({
+    collection: PropertyFactory.iter(() => this._updateItems()),
+  });
   components: Component<E>[] = [];
-  parent = new Binding(Container);
+  parent = new ComponentProperty() as unknown as Property<Container>;
 
-  constructor(init: PropertyConstructor<P>, private proc: (i: Int, p: P) => Component<E>[]) {
+  constructor(private proc: (i: number, p: V) => Component<E>[]) {
     super();
-    this.#model = new Model({
-      collection: new Binding(Iter.of(init)),
-    });
-
-    this.bindings.collection.onChange(() => this._updateItems());
+    this.parent.set(new NullContainer(null));
   }
 
   get bindings() {
-    return this.#model.bindings;
+    return this.model.bindings;
   }
 
   get props() {
-    return this.#model.props;
+    return this.model.props;
   }
 
   inject(deps: { [key: string]: any; }): void {
@@ -444,10 +499,11 @@ export class Repeater<P extends Property = Property, E = unknown> extends Compon
   }
 
   _updateItems() {
-    const all = [];
+    const all: Component<E>[][] = [];
     let i = 0;
-    for(const p of this.props.collection.iter()) {
-      all.push(this.proc.call(null, Int.from(i++), p));
+    for(const p of this.props.collection) {
+      const component = this.proc.call(null, i++, p as V);
+      all.push(component);
     }
     this.components = all.flat();
     this.parent.get().children.update(this);
@@ -460,8 +516,7 @@ export interface Dom {
   Text(): Text;
   Layout(): Layout;
   Pane(): Pane;
-  Repeater<P extends Property, E = unknown>(
-    init: PropertyConstructor<P>,
-    proc: (i: Int, p: P) => Component<E>[],
-  ): Repeater<P, E>;
+  Repeater<V extends Value, E = unknown>(
+    proc: (i: number, p: V) => Component<E>[],
+  ): Repeater<V, E>;
 }

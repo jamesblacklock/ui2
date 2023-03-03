@@ -391,6 +391,13 @@ impl Type {
 			_ => None,
 		}
 	}
+
+	fn is_iter(&self) -> bool {
+		match self {
+			Type::Iter(_) => true,
+			_ => false,
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -403,7 +410,7 @@ pub struct Expr {
 pub enum ExprValue {
 	Px(f64),
 	Float(f64),
-	Int(i64),
+	Int(i32),
 	Color(f64, f64, f64, f64),
 	String(String),
 	Enum(String, Option<String>),
@@ -411,6 +418,7 @@ pub enum ExprValue {
 	Object(HashMap<String, Expr>),
 	Path(Vec<String>, Ctx),
 	Coerce(Box<Expr>, Type),
+	AsIter(Box<Expr>, Type),
 	FunctionCall(Box<Expr>, Vec<Expr>),
 }
 

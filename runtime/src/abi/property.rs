@@ -31,6 +31,9 @@ impl Listener for Rc<AbiFunction> {
   fn clone(&self) -> Box<dyn Listener> {
     Box::new(Clone::clone(self))
   }
+  fn id(&self) -> usize {
+    self.0
+  }
 }
 
 macro_rules! define_drop {
@@ -74,6 +77,8 @@ macro_rules! define_property_type {
       let value = IntoRuntime::into_runtime(value);
       if let Err(err) = property.into_runtime_temporary().try_set(value.clone()) {
         result.into_runtime_temporary().err(err);
+      } else {
+        result.into_runtime_temporary().ok(());
       }
     }
     #[no_mangle] #[allow(non_snake_case)]
@@ -86,23 +91,30 @@ macro_rules! define_property_type {
     }
     #[no_mangle] #[allow(non_snake_case)]
     pub fn $property_bind(property: Abi<Property<$prop_type>>, parents: Abi<Vec<Box<dyn DynProperty>>>, callback: AbiFunction, result: Abi<AbiResult>) {
-      let callback = move |q| {
-        if let Some(value) = callback.dispatch_box(q) {
-          Value::from_item(ValueItem::unwrapped(value))
-        } else {
-          Value::default()
+      let callback = move |q: Vec<WrappedValue>| {
+        if callback.0 == 0 {
+          if q.len() > 0 {
+            return Value::from_item(ValueItem::unwrapped(q[0].clone()))
+          }
+        } else if let Some(value) = callback.dispatch_box(q) {
+          return Value::from_item(ValueItem::unwrapped(value))
         }
+        Value::default()
       };
       let property = property.into_runtime_temporary();
     
       if let Err(err) = property.try_bind_dynamic(&parents.into_runtime_temporary(), callback) {
         result.into_runtime_temporary().err(err);
+      } else {
+        result.into_runtime_temporary().ok(());
       }
     }
     #[no_mangle] #[allow(non_snake_case)]
     pub fn $property_unbind(property: Abi<Property<$prop_type>>, result: Abi<AbiResult>) {
       if let Err(err) = property.into_runtime_temporary().try_unbind() {
         result.into_runtime_temporary().err(err);
+      } else {
+        result.into_runtime_temporary().ok(());
       }
     }
     #[no_mangle] #[allow(non_snake_case)]
@@ -167,6 +179,11 @@ pub fn property_factory__commit_changes(factory: Abi<PropertyFactory>) {
 #[no_mangle] #[allow(non_snake_case)]
 pub fn property_factory__count(factory: Abi<PropertyFactory>) -> usize {
   factory.into_runtime_temporary().count()
+}
+
+#[no_mangle] #[allow(non_snake_case)]
+pub fn property_factory__set_notify(factory: Abi<PropertyFactory>, value: bool) {
+  factory.into_runtime_temporary().notify(value)
 }
 
 define_drop! { PropertyFactory, property_factory__drop }
